@@ -1,3 +1,59 @@
+# Marketing Ops AI — Project Spec
+
+## What this is
+An internal chat application that lets marketing team members query
+SFMC marketing asset data and trigger actions using plain English.
+Built as a POC for an AI Engineering course.
+
+## The "money" feature
+Natural language querying of a Neon Postgres database that mirrors
+SFMC data extensions. Users can ask questions like:
+- "What emails were sent to campus students last month?"
+- "What automated journeys are currently running?"
+- "What lift did we get from SMS in the last 30 days?"
+- "How did SMS lift compare between Freshman and Senior students?"
+- "How do I improve email performance for graduate students?"
+  (this triggers: data agent + creative agent + project manager agent)
+
+## Agents
+1. Orchestrator — reads every message, decides which agents to call
+2. Data Query Agent — translates NL to SQL, queries Neon, returns results
+3. Campaign Analyst Agent — interprets query results, calculates lift/trends
+4. Creative Agent — generates campaign ideas based on performance data
+5. Audience Segmentation Agent — profiles and compares student segments
+6. Brand Standards Agent — checks ideas against brand guidelines
+7. Image Analysis Agent — predicts image performance based on history
+8. Ops/PM Agent — creates Airtable project tickets and tasks
+
+## Tech stack
+- Framework: Agno (agent framework)
+- Database: Neon (Postgres) — read-only SFMC dummy data
+- Backend: Python + FastAPI
+- Frontend: Next.js (Vercel boilerplate)
+- IDE: Cursor
+- Project management: Airtable
+
+## Business Units in the data
+UC (University Campus), GC (Graduate Campus), OL (Online),
+MIL (Military), INTL (International)
+
+## Key tables in Neon
+- dod_metrics — daily email performance (primary fact table)
+- email_assets — email template definitions
+- journeys — journey/automation flow definitions
+- journey_activities — individual send steps within journeys
+- automations — scheduled automations feeding journeys
+- subscribers — student contact records
+- opportunities — downstream funnel data (enrollment, registration)
+- landing_page_assets, content_block_assets, sms_assets, image_assets
+
+## Response formats expected
+- Plain text answers
+- Data tables
+- Charts and visualizations
+- Actionable next steps / recommendations
+
+
 # Feature Specification: Conversational Email Insights Chat
 
 **Feature Branch**: `001-email-insights-chat`  
@@ -6,19 +62,6 @@
 **Input**: User description: "Build a conversational chat application that allows marketing team members and the CMO at an education company to ask natural language questions about their email marketing assets and performance data. All users have the same level of access. No login or authentication is required in this initial phase."
 
 ## User Scenarios & Testing *(mandatory)*
-
-<!--
-  IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
-  Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
-  you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
-  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
-  Think of each story as a standalone slice of functionality that can be:
-  - Developed independently
-  - Tested independently
-  - Deployed independently
-  - Demonstrated to users independently
--->
 
 ### User Story 1 - Ask and explore email performance (Priority: P1)
 
