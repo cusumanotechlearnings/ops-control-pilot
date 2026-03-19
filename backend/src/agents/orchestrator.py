@@ -37,6 +37,8 @@ orchestrator = Team(
     instructions=ORCHESTRATOR_PROMPT,
     db=db,
     markdown=True,
+    add_history_to_context=True,
+    num_history_runs=10,
 )
 
 def chat(message: str, session_id: str, user_id: str = "user") -> str:
