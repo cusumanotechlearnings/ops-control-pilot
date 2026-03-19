@@ -1,12 +1,12 @@
 {
-  "name": "nextjs",
+  "name": "ops-control-pilot",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "cd frontend2 && npm run dev",
+    "build": "cd frontend2 && npm run build",
+    "start": "cd frontend2 && npm run start",
+    "lint": "cd frontend2 && npm run lint"
   },
   "dependencies": {
     "next": "16.1.6",
