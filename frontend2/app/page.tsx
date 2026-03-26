@@ -8,17 +8,20 @@ import {
   fetchJourneys,
   fetchUpcomingCalendar,
   fetchEmailSearch,
+  fetchVocResponses,
   type MetricsOverall,
   type TrendRow,
   type Journey,
   type CalendarDay,
   type EmailSearchResult,
+  type VocResponse,
 } from "./lib/api";
 import {
   MetricCard,
   TrendChart,
   SendsCalendar,
   JourneysPanel,
+  VocResponsesPanel,
   EmailSearchPanel,
   DashboardChatBar,
   FilterBar,
@@ -58,6 +61,7 @@ export default function DashboardPage() {
   const [overall, setOverall] = useState<MetricsOverall | null>(null);
   const [trend, setTrend] = useState<TrendRow[]>([]);
   const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [vocResponses, setVocResponses] = useState<VocResponse[]>([]);
   const [calDays, setCalDays] = useState<CalendarDay[]>([]);
   const [searchResults, setSearchResults] = useState<EmailSearchResult[]>([]);
 
@@ -65,6 +69,7 @@ export default function DashboardPage() {
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [loadingTrend, setLoadingTrend] = useState(true);
   const [loadingJourneys, setLoadingJourneys] = useState(true);
+  const [loadingVoc, setLoadingVoc] = useState(true);
   const [loadingCal, setLoadingCal] = useState(true);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -95,6 +100,18 @@ export default function DashboardPage() {
     })
       .then((d) => { setTrend(d.trend); setLoadingTrend(false); })
       .catch(() => setLoadingTrend(false));
+  }, [filters]);
+
+  useEffect(() => {
+    setLoadingVoc(true);
+    fetchVocResponses({
+      days: 365,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      businessUnit: filters.audience || undefined,
+    })
+      .then((d) => { setVocResponses(d.responses); setLoadingVoc(false); })
+      .catch(() => setLoadingVoc(false));
   }, [filters]);
 
   useEffect(() => {
@@ -259,6 +276,17 @@ export default function DashboardPage() {
             <div className="dashboard-card">
               <h3 className="section-title">Daily Trend</h3>
               <TrendChart data={trend} loading={loadingTrend} />
+            </div>
+          </section>
+
+          {/* ── VOC Responses ── */}
+          <section className="dashboard-section">
+            <div className="dashboard-card">
+              <h3 className="section-title">VOC Responses</h3>
+              <p className="section-subtitle">
+                Voice-of-customer feedback submitted within the selected period.
+              </p>
+              <VocResponsesPanel responses={vocResponses} loading={loadingVoc} />
             </div>
           </section>
 

@@ -139,6 +139,17 @@ export type EmailSearchResult = {
 
 export type EmailSearchResponse = { results: EmailSearchResult[]; count: number };
 
+export type VocResponse = {
+  id: number;
+  response_text: string | null;
+  response_date: string | null;
+  sentiment: string | null;
+  target_audience: string | null;
+  subscriber_email: string | null;
+};
+
+export type VocResponsesResponse = { responses: VocResponse[]; count: number };
+
 // ---------------------------------------------------------------------------
 // Dashboard fetch helpers
 // ---------------------------------------------------------------------------
@@ -205,6 +216,23 @@ export async function fetchUpcomingCalendar(year?: number, month?: number, busin
   if (businessUnit) qs.set("business_unit", businessUnit);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/sends/upcoming-calendar${query}`);
+}
+
+export async function fetchVocResponses(params?: {
+  days?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  businessUnit?: string;
+  limit?: number;
+}): Promise<VocResponsesResponse> {
+  const qs = new URLSearchParams();
+  if (params?.days) qs.set("days", String(params.days));
+  if (params?.dateFrom) qs.set("date_from", params.dateFrom);
+  if (params?.dateTo) qs.set("date_to", params.dateTo);
+  if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/voc-responses${query}`);
 }
 
 export async function fetchEmailSearch(params: {

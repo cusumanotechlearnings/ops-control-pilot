@@ -1301,6 +1301,240 @@ h6 {
 }
 
 /* ==========================================================================
+   VOC RESPONSES PANEL
+   ========================================================================== */
+
+.voc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voc-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voc-tab-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.voc-tab {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.voc-tab:hover,
+.voc-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--pill-bg);
+}
+
+.voc-tab-positive.active,
+.voc-tab-positive:hover {
+  border-color: #16a34a;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.voc-tab-neutral.active,
+.voc-tab-neutral:hover {
+  border-color: #9ca3af;
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.voc-tab-negative.active,
+.voc-tab-negative:hover {
+  border-color: #ef4444;
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.voc-search {
+  flex: 1;
+  min-width: 160px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chat-bg);
+  color: var(--text-primary);
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.voc-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.voc-loading {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 12px 0;
+  text-align: center;
+}
+
+.voc-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.voc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.voc-table th {
+  background: #f2f2ef;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.voc-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.voc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Sentiment row tinting */
+.voc-row-positive td {
+  background: #f0fdf4;
+}
+
+.voc-row-positive:hover td {
+  background: #dcfce7;
+}
+
+.voc-row-neutral td {
+  background: #fafaf8;
+}
+
+.voc-row-neutral:hover td {
+  background: #f3f4f6;
+}
+
+.voc-row-negative td {
+  background: #fff5f5;
+}
+
+.voc-row-negative:hover td {
+  background: #fee2e2;
+}
+
+.voc-feedback-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voc-date-cell {
+  white-space: nowrap;
+}
+
+.voc-email-cell {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.voc-sentiment-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.voc-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 16px;
+}
+
+.voc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  gap: 8px;
+}
+
+.voc-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.voc-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voc-page-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.voc-page-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--pill-bg);
+}
+
+.voc-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.voc-page-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
    EMAIL SEARCH PANEL
    ========================================================================== */
 
