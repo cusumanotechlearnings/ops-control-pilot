@@ -6,9 +6,10 @@ export type GlobalFilters = {
   dateFrom: string;
   dateTo: string;
   audience: string;
+  subjectLine: string;
 };
 
-const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "" };
+const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "", subjectLine: "" };
 
 const BU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: "",     label: "All Audiences", short: "All" },
@@ -47,7 +48,7 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [open]);
 
-  const isActive = !!(filters.dateFrom || filters.dateTo || filters.audience);
+  const isActive = !!(filters.dateFrom || filters.dateTo || filters.audience || filters.subjectLine);
 
   const pillLabel = (() => {
     if (!isActive) return "All Time · All Audiences";
@@ -60,6 +61,9 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
     if (filters.audience) {
       const opt = BU_OPTIONS.find((o) => o.value === filters.audience);
       parts.push(opt?.short ?? filters.audience);
+    }
+    if (filters.subjectLine) {
+      parts.push(`"${filters.subjectLine}"`);
     }
     return parts.join(" · ");
   })();
@@ -139,6 +143,21 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Subject Line */}
+          <div className="filter-section">
+            <label className="filter-section-label" htmlFor="fb-subject-line">
+              Subject Line Contains
+            </label>
+            <input
+              id="fb-subject-line"
+              type="text"
+              className="filter-date-input"
+              placeholder="e.g. graduation"
+              value={draft.subjectLine}
+              onChange={(e) => setDraft((d) => ({ ...d, subjectLine: e.target.value }))}
+            />
           </div>
 
           {/* Actions */}

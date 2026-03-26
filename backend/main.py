@@ -110,10 +110,12 @@ async def metrics_summary(
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
+    subject_line: Optional[str] = Query(default=None, description="LIKE filter on subject_line"),
 ):
     """
     Aggregate KPI totals. When date_from/date_to are provided they take
-    precedence over the relative `days` window. Optionally filter by BU.
+    precedence over the relative `days` window. Optionally filter by BU
+    and/or subject line keyword (case-insensitive substring match).
     """
     actual_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
     params: dict = {}
@@ -140,6 +142,11 @@ async def metrics_summary(
         bu_clause = "AND business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
 
+    sl_clause = ""
+    if subject_line:
+        sl_clause = "AND subject_line ILIKE %(subject_line)s"
+        params["subject_line"] = f"%{subject_line}%"
+
     # Same clauses but with d. prefix for the sentiment join query
     if date_from or date_to:
         d_parts = []
@@ -155,6 +162,7 @@ async def metrics_summary(
             f" - INTERVAL '{days} days'"
         )
     d_bu_clause = "AND d.business_unit = %(business_unit)s" if business_unit else ""
+    d_sl_clause = "AND d.subject_line ILIKE %(subject_line)s" if subject_line else ""
 
     sql = f"""
         SELECT
@@ -171,6 +179,7 @@ async def metrics_summary(
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
+          {sl_clause}
         GROUP BY business_unit
         ORDER BY business_unit
     """
@@ -190,6 +199,7 @@ async def metrics_summary(
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
+          {sl_clause}
     """
     sentiment_sql = f"""
         SELECT AVG(v.sentiment_value) AS avg_sentiment
@@ -198,6 +208,7 @@ async def metrics_summary(
         WHERE (d.is_planned IS FALSE OR d.is_planned IS NULL)
           {d_date_clause}
           {d_bu_clause}
+          {d_sl_clause}
     """
 
     try:
@@ -222,10 +233,12 @@ async def metrics_trend(
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
+    subject_line: Optional[str] = Query(default=None, description="LIKE filter on subject_line"),
 ):
     """
     Daily delivery/open/click/sentiment counts broken down by business_unit.
     When date_from/date_to are provided they override the relative `days` window.
+    Optionally filter by subject line keyword (case-insensitive substring match).
     """
     actual_filter = "(d.is_planned IS FALSE OR d.is_planned IS NULL)"
     anchor_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
@@ -252,6 +265,11 @@ async def metrics_trend(
         bu_clause = "AND d.business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
 
+    sl_clause = ""
+    if subject_line:
+        sl_clause = "AND d.subject_line ILIKE %(subject_line)s"
+        params["subject_line"] = f"%{subject_line}%"
+
     sql = f"""
         SELECT
             d.send_date,
@@ -268,6 +286,7 @@ async def metrics_trend(
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
+          {sl_clause}
         GROUP BY d.send_date, d.business_unit
         ORDER BY d.send_date ASC, d.business_unit
     """
@@ -295,12 +314,15 @@ async def voc_responses_list(
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
+    subject_line: Optional[str] = Query(default=None, description="LIKE filter on the associated email subject line"),
     limit: int = Query(default=500, ge=1, le=2000),
 ):
     """
     List VOC responses with subscriber email and audience type.
     Filtered by response_date. When date_from/date_to are provided they
     take precedence over the relative `days` rolling window.
+    When subject_line is provided, only responses linked to a dod_metrics
+    row whose subject_line matches are returned.
     """
     params: dict = {}
 
@@ -321,6 +343,13 @@ async def voc_responses_list(
         bu_clause = "AND v.business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
 
+    sl_join = ""
+    sl_clause = ""
+    if subject_line:
+        sl_join = "LEFT JOIN dod_metrics d ON v.dod_metric_id = d.id"
+        sl_clause = "AND d.subject_line ILIKE %(subject_line)s"
+        params["subject_line"] = f"%{subject_line}%"
+
     params["limit"] = limit
 
     sql = f"""
@@ -333,9 +362,11 @@ async def voc_responses_list(
             s.email AS subscriber_email
         FROM voc_responses v
         LEFT JOIN subscribers s ON s.subscriber_key = v.subscriber_key
+        {sl_join}
         WHERE 1=1
           {date_clause}
           {bu_clause}
+          {sl_clause}
         ORDER BY v.response_date DESC
         LIMIT %(limit)s
     """
@@ -359,11 +390,13 @@ async def voc_responses_list(
 async def journeys_list(
     status: Optional[str] = Query(default=None),
     business_unit: Optional[str] = Query(default=None),
+    subject_line: Optional[str] = Query(default=None, description="LIKE filter — only journeys with a matching activity email subject"),
 ):
     """
     List journeys with their latest send date and entry source frequency.
-    Optionally filter by status (Active, Stopped, Draft, Paused, Complete)
-    and/or business_unit.
+    Optionally filter by status (Active, Stopped, Draft, Paused, Complete),
+    business_unit, and/or subject line keyword (matched against
+    journey_activities.email_subject; journey shown if any activity matches).
     """
     params: dict = {}
     status_filter = ""
@@ -374,6 +407,16 @@ async def journeys_list(
     if business_unit:
         bu_filter = "AND j.business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
+
+    sl_filter = ""
+    if subject_line:
+        sl_filter = """
+        AND EXISTS (
+            SELECT 1 FROM journey_activities ja
+            WHERE ja.journey_id = j.journey_id
+              AND ja.email_subject ILIKE %(subject_line)s
+        )"""
+        params["subject_line"] = f"%{subject_line}%"
 
     sql = f"""
         SELECT
@@ -396,6 +439,7 @@ async def journeys_list(
         WHERE 1=1
         {status_filter}
         {bu_filter}
+        {sl_filter}
         GROUP BY
             j.journey_id, j.journey_name, j.business_unit, j.status,
             j.target_audience, j.department, j.created_date, j.last_modified_date,
@@ -488,10 +532,13 @@ async def upcoming_sends_calendar(
     year: int = Query(default=None),
     month: int = Query(default=None, ge=1, le=12),
     business_unit: Optional[str] = Query(default=None),
+    subject_line: Optional[str] = Query(default=None, description="LIKE filter — only journeys with a matching activity email subject"),
 ):
     """
     Upcoming journey calendar for the given month/year, optionally filtered
-    by business_unit. Defaults to the current calendar month.
+    by business_unit and/or subject line keyword. Days with no matching
+    journeys are omitted when a subject line filter is active.
+    Defaults to the current calendar month.
     """
     from datetime import date as _date
     today = _date.today()
@@ -503,6 +550,16 @@ async def upcoming_sends_calendar(
     if business_unit:
         bu_filter = "AND j.business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
+
+    sl_filter = ""
+    if subject_line:
+        sl_filter = """
+          AND EXISTS (
+              SELECT 1 FROM journey_activities ja
+              WHERE ja.journey_id = j.journey_id
+                AND ja.email_subject ILIKE %(subject_line)s
+          )"""
+        params["subject_line"] = f"%{subject_line}%"
 
     sql = f"""
         SELECT
@@ -521,6 +578,7 @@ async def upcoming_sends_calendar(
         WHERE EXTRACT(YEAR  FROM jes.schedule_start_time) = %(year)s
           AND EXTRACT(MONTH FROM jes.schedule_start_time) = %(month)s
           {bu_filter}
+          {sl_filter}
         GROUP BY DATE(jes.schedule_start_time)
         ORDER BY DATE(jes.schedule_start_time)
     """
