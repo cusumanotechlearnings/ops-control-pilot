@@ -1,5 +1,4 @@
 import os
-import re
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +11,6 @@ load_dotenv()
 os.makedirs("data", exist_ok=True)
 
 from src.agents.orchestrator import chat
-from src.tools.image_generation_tool import generate_header_image
 
 app = FastAPI()
 
@@ -67,50 +65,11 @@ class ChatResponse(BaseModel):
 
 ALLOWED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_IMAGE_BASE64_CHARS = 8_000_000
-IMAGE_REQUEST_PATTERN = re.compile(
-    r"\b(generate|create|make|design)\b.*\b(image|header|banner|hero)\b|\bimage\b.*\b(generate|create|make|design)\b",
-    flags=re.IGNORECASE,
-)
-
-
-def _is_direct_image_request(message: str) -> bool:
-    return bool(message and IMAGE_REQUEST_PATTERN.search(message))
 
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest) -> ChatResponse:
-    # Fast-path explicit image generation requests to avoid expensive
-    # multi-agent orchestration/token usage for image-only intents.
-    if _is_direct_image_request(req.message):
-        tool_result = generate_header_image.entrypoint(
-            prompt=req.message,
-            alt_text="Generated Avalon University marketing image",
-        )
-        if isinstance(tool_result, dict) and tool_result.get("success"):
-            image_base64 = tool_result.get("base64_data")
-            image_mime_type = tool_result.get("mime_type")
-            image_alt = tool_result.get("alt_text") or "Generated image"
-            if (
-                isinstance(image_base64, str)
-                and isinstance(image_mime_type, str)
-                and image_mime_type in ALLOWED_IMAGE_MIME_TYPES
-                and len(image_base64) <= MAX_IMAGE_BASE64_CHARS
-            ):
-                return ChatResponse(
-                    response="Generated a new image based on your prompt.",
-                    response_type="answer",
-                    image_base64=image_base64,
-                    image_mime_type=image_mime_type,
-                    image_alt=image_alt if isinstance(image_alt, str) else None,
-                )
-        error_text = "Image generation failed."
-        if isinstance(tool_result, dict) and isinstance(tool_result.get("error"), str):
-            error_text = tool_result["error"]
-        return ChatResponse(
-            response=f"I couldn't generate an image right now: {error_text}",
-            response_type="info",
-        )
-
+    # All requests go through the orchestrator so confirmation rules are enforced.
     result = chat(req.message, req.session_id, req.user_id)
     response = result.get("response", "")
     response_type = (
@@ -320,6 +279,72 @@ async def metrics_trend(
             if row.get("avg_sentiment") is not None:
                 row["avg_sentiment"] = float(row["avg_sentiment"])
         return {"trend": rows}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — VOC Responses
+# ---------------------------------------------------------------------------
+
+@app.get("/api/voc-responses")
+async def voc_responses_list(
+    days: int = Query(default=30, ge=7, le=1825),
+    date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
+    business_unit: Optional[str] = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    """
+    List VOC responses with subscriber email and audience type.
+    Filtered by response_date. When date_from/date_to are provided they
+    take precedence over the relative `days` rolling window.
+    """
+    params: dict = {}
+
+    if date_from or date_to:
+        parts = []
+        if date_from:
+            parts.append("v.response_date >= %(date_from)s")
+            params["date_from"] = date_from
+        if date_to:
+            parts.append("v.response_date <= %(date_to)s::date + INTERVAL '1 day'")
+            params["date_to"] = date_to
+        date_clause = "AND " + " AND ".join(parts)
+    else:
+        date_clause = f"AND v.response_date >= NOW() - INTERVAL '{days} days'"
+
+    bu_clause = ""
+    if business_unit:
+        bu_clause = "AND v.business_unit = %(business_unit)s"
+        params["business_unit"] = business_unit
+
+    params["limit"] = limit
+
+    sql = f"""
+        SELECT
+            v.id,
+            v.response_text,
+            v.response_date,
+            v.sentiment,
+            v.target_audience,
+            s.email AS subscriber_email
+        FROM voc_responses v
+        LEFT JOIN subscribers s ON s.subscriber_key = v.subscriber_key
+        WHERE 1=1
+          {date_clause}
+          {bu_clause}
+        ORDER BY v.response_date DESC
+        LIMIT %(limit)s
+    """
+    try:
+        rows = query_db(sql, params or None)
+        for row in rows:
+            if row.get("response_date"):
+                row["response_date"] = str(row["response_date"])
+        return {"responses": rows, "count": len(rows)}
     except HTTPException:
         raise
     except Exception as e:
