@@ -28,6 +28,9 @@ export function MessageList({ messages, isLoading, loadingLabel }: MessageListPr
           <AgentMessageCard
             key={message.id}
             content={message.content}
+            imageBase64={message.imageBase64 ?? null}
+            imageMimeType={message.imageMimeType ?? null}
+            imageAlt={message.imageAlt ?? null}
             agentChain={message.agentChain ?? null}
             responseType={message.responseType ?? "answer"}
           />

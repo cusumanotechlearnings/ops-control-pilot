@@ -9,20 +9,22 @@ import { sendChatMessage } from "../lib/api";
 import { Sidebar, MessageList } from "../components";
 
 const nowIso = new Date().toISOString();
+const makeId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const starterConversations: Conversation[] = [
   {
-    id: "conv-1",
+    id: makeId("conv"),
     title: "How did Fall 2025 performance compare to Fall 2024?",
     updatedAt: nowIso,
     messages: [
       {
-        id: "m-1",
+        id: makeId("m"),
         role: "user",
         content: "How did Fall 2025 performance compare to Fall 2024?",
       },
       {
-        id: "m-2",
+        id: makeId("m"),
         role: "agent",
         responseType: "answer",
         agentChain: ["Data Query", "Analyst"],
@@ -40,12 +42,12 @@ const starterConversations: Conversation[] = [
     ],
   },
   {
-    id: "conv-2",
+    id: makeId("conv"),
     title: "What automated journeys are currently active?",
     updatedAt: "2026-03-16T20:00:00.000Z",
     messages: [
       {
-        id: "m-3",
+        id: makeId("m"),
         role: "user",
         content: "What automated journeys are currently active?",
       },
@@ -85,7 +87,7 @@ function ChatPageInner() {
   );
 
   function onNewConversation() {
-    const newId = `conv-${Date.now()}`;
+    const newId = makeId("conv");
     const newConversation: Conversation = {
       id: newId,
       title: "New conversation",
@@ -120,7 +122,7 @@ function ChatPageInner() {
     if (!text.trim()) return;
 
     appendMessage(conversationId, {
-      id: `m-${Date.now()}-user`,
+      id: makeId("m-user"),
       role: "user",
       content: text.trim(),
     });
@@ -131,16 +133,19 @@ function ChatPageInner() {
     try {
       const data = await sendChatMessage(text.trim(), conversationId);
       const agentMessage: Message = {
-        id: `m-${Date.now()}-agent`,
+        id: makeId("m-agent"),
         role: "agent",
         responseType: data.response_type === "clarification" ? "info" : "answer",
         agentChain: null,
         content: data.response,
+        imageBase64: data.image_base64 ?? null,
+        imageMimeType: data.image_mime_type ?? null,
+        imageAlt: data.image_alt ?? null,
       };
       appendMessage(conversationId, agentMessage);
     } catch {
       appendMessage(conversationId, {
-        id: `m-${Date.now()}-agent`,
+        id: makeId("m-agent"),
         role: "agent",
         responseType: "info",
         content: ERROR_MESSAGE,
@@ -164,7 +169,7 @@ function ChatPageInner() {
       didAutoSubmit.current = true;
 
       // Create a fresh conversation for the inbound query
-      const newId = `conv-${Date.now()}`;
+      const newId = makeId("conv");
       const newConversation: Conversation = {
         id: newId,
         title: "New conversation",

@@ -320,6 +320,18 @@ h6 {
   border-bottom: 0;
 }
 
+.agent-inline-image-wrap {
+  margin-top: 12px;
+}
+
+.agent-inline-image {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
 .loading-card {
   opacity: 0.96;
 }
