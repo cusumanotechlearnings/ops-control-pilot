@@ -10,6 +10,9 @@ const API_BASE =
 export type ChatResponse = {
   response: string;
   response_type: "clarification" | "answer";
+  image_base64?: string | null;
+  image_mime_type?: string | null;
+  image_alt?: string | null;
 };
 
 export async function sendChatMessage(

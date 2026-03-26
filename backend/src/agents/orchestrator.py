@@ -1,4 +1,7 @@
 import os
+import json
+import re
+from typing import TypedDict
 from dotenv import load_dotenv
 from agno.agent import Agent
 from agno.team import Team
@@ -38,13 +41,70 @@ orchestrator = Team(
     db=db,
     markdown=True,
     add_history_to_context=True,
-    num_history_runs=10,
+    num_history_messages=8,
+    max_tool_calls_from_history=0,
+    enable_session_summaries=False,
+    add_session_summary_to_context=False,
+    compress_tool_results=True,
+    max_iterations=3,
+    tool_call_limit=2,
 )
 
-def chat(message: str, session_id: str, user_id: str = "user") -> str:
+IMAGE_PAYLOAD_PATTERN = re.compile(
+    r"<image_payload>\s*(\{.*?\})\s*</image_payload>",
+    flags=re.DOTALL,
+)
+ALLOWED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+MAX_IMAGE_BASE64_CHARS = 8_000_000
+
+
+class ChatResult(TypedDict):
+    response: str
+    image_base64: str | None
+    image_mime_type: str | None
+    image_alt: str | None
+
+
+def _extract_image_payload(content: str) -> ChatResult:
+    image_base64 = None
+    image_mime_type = None
+    image_alt = None
+
+    match = IMAGE_PAYLOAD_PATTERN.search(content or "")
+    cleaned_content = IMAGE_PAYLOAD_PATTERN.sub("", content or "").strip()
+
+    if match:
+        try:
+            payload = json.loads(match.group(1))
+            raw_b64 = payload.get("image_base64")
+            raw_mime = payload.get("image_mime_type")
+            raw_alt = payload.get("image_alt")
+
+            if (
+                isinstance(raw_b64, str)
+                and isinstance(raw_mime, str)
+                and raw_mime in ALLOWED_IMAGE_MIME_TYPES
+                and len(raw_b64) <= MAX_IMAGE_BASE64_CHARS
+            ):
+                image_base64 = raw_b64
+                image_mime_type = raw_mime
+                image_alt = raw_alt if isinstance(raw_alt, str) else "Generated image"
+        except json.JSONDecodeError:
+            pass
+
+    return {
+        "response": cleaned_content,
+        "image_base64": image_base64,
+        "image_mime_type": image_mime_type,
+        "image_alt": image_alt,
+    }
+
+
+def chat(message: str, session_id: str, user_id: str = "user") -> ChatResult:
     response = orchestrator.run(
         message,
         session_id=session_id,
         user_id=user_id
     )
-    return response.content
+    content = response.content if isinstance(response.content, str) else str(response.content)
+    return _extract_image_payload(content)

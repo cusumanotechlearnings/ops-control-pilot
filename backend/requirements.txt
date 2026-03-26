@@ -6,3 +6,4 @@ psycopg2-binary
 pyairtable
 python-dotenv
 sqlalchemy
+openai

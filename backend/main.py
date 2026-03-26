@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ load_dotenv()
 os.makedirs("data", exist_ok=True)
 
 from src.agents.orchestrator import chat
+from src.tools.image_generation_tool import generate_header_image
 
 app = FastAPI()
 
@@ -54,18 +56,89 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     user_id: str = "user"
 
+
+class ChatResponse(BaseModel):
+    response: str
+    response_type: str
+    image_base64: Optional[str] = None
+    image_mime_type: Optional[str] = None
+    image_alt: Optional[str] = None
+
+
+ALLOWED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+MAX_IMAGE_BASE64_CHARS = 8_000_000
+IMAGE_REQUEST_PATTERN = re.compile(
+    r"\b(generate|create|make|design)\b.*\b(image|header|banner|hero)\b|\bimage\b.*\b(generate|create|make|design)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _is_direct_image_request(message: str) -> bool:
+    return bool(message and IMAGE_REQUEST_PATTERN.search(message))
+
+
 @app.post("/chat")
-async def chat_endpoint(req: ChatRequest):
-    response = chat(req.message, req.session_id, req.user_id)
+async def chat_endpoint(req: ChatRequest) -> ChatResponse:
+    # Fast-path explicit image generation requests to avoid expensive
+    # multi-agent orchestration/token usage for image-only intents.
+    if _is_direct_image_request(req.message):
+        tool_result = generate_header_image.entrypoint(
+            prompt=req.message,
+            alt_text="Generated Avalon University marketing image",
+        )
+        if isinstance(tool_result, dict) and tool_result.get("success"):
+            image_base64 = tool_result.get("base64_data")
+            image_mime_type = tool_result.get("mime_type")
+            image_alt = tool_result.get("alt_text") or "Generated image"
+            if (
+                isinstance(image_base64, str)
+                and isinstance(image_mime_type, str)
+                and image_mime_type in ALLOWED_IMAGE_MIME_TYPES
+                and len(image_base64) <= MAX_IMAGE_BASE64_CHARS
+            ):
+                return ChatResponse(
+                    response="Generated a new image based on your prompt.",
+                    response_type="answer",
+                    image_base64=image_base64,
+                    image_mime_type=image_mime_type,
+                    image_alt=image_alt if isinstance(image_alt, str) else None,
+                )
+        error_text = "Image generation failed."
+        if isinstance(tool_result, dict) and isinstance(tool_result.get("error"), str):
+            error_text = tool_result["error"]
+        return ChatResponse(
+            response=f"I couldn't generate an image right now: {error_text}",
+            response_type="info",
+        )
+
+    result = chat(req.message, req.session_id, req.user_id)
+    response = result.get("response", "")
     response_type = (
         "clarification"
         if "?" in response and len(response) < 300
         else "answer"
     )
-    return {
-        "response": response,
-        "response_type": response_type
-    }
+    image_base64 = result.get("image_base64")
+    image_mime_type = result.get("image_mime_type")
+    image_alt = result.get("image_alt")
+
+    if (
+        not isinstance(image_base64, str)
+        or not isinstance(image_mime_type, str)
+        or image_mime_type not in ALLOWED_IMAGE_MIME_TYPES
+        or len(image_base64) > MAX_IMAGE_BASE64_CHARS
+    ):
+        image_base64 = None
+        image_mime_type = None
+        image_alt = None
+
+    return ChatResponse(
+        response=response,
+        response_type=response_type,
+        image_base64=image_base64,
+        image_mime_type=image_mime_type,
+        image_alt=image_alt if isinstance(image_alt, str) else None,
+    )
 
 
 # ---------------------------------------------------------------------------
