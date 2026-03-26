@@ -1,207 +1,227 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import type { Conversation, Message } from "./types";
-import { truncateTitle } from "./lib/utils";
-import { sendChatMessage } from "./lib/api";
-import { Sidebar, MessageList } from "./components";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  fetchMetricsSummary,
+  fetchMetricsTrend,
+  fetchJourneys,
+  fetchCalendar,
+  fetchEmailSearch,
+  type MetricsOverall,
+  type TrendRow,
+  type Journey,
+  type CalendarDay,
+  type EmailSearchResult,
+} from "./lib/api";
+import {
+  MetricCard,
+  TrendChart,
+  SendsCalendar,
+  JourneysPanel,
+  EmailSearchPanel,
+  DashboardChatBar,
+} from "./components/dashboard";
 
-const nowIso = new Date().toISOString();
+function fmtNum(n: number | null | undefined) {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
-const starterConversations: Conversation[] = [
-  {
-    id: "conv-1",
-    title: "How did Fall 2025 performance compare to Fall 2024?",
-    updatedAt: nowIso,
-    messages: [
-      {
-        id: "m-1",
-        role: "user",
-        content: "How did Fall 2025 performance compare to Fall 2024?",
-      },
-      {
-        id: "m-2",
-        role: "agent",
-        responseType: "answer",
-        agentChain: ["Data Query", "Analyst"],
-        content: [
-          "Fall 2025 outperformed Fall 2024 on the core engagement metrics.",
-          "",
-          "| term | avg_open_rate | avg_click_rate | total_sends |",
-          "| --- | ---: | ---: | ---: |",
-          "| Fall 2024 | 30.2% | 4.8% | 142,230 |",
-          "| Fall 2025 | 33.9% | 5.6% | 151,992 |",
-          "",
-          "The strongest gain came from military and online segments.",
-        ].join("\n"),
-      },
-    ],
-  },
-  {
-    id: "conv-2",
-    title: "What automated journeys are currently active?",
-    updatedAt: "2026-03-16T20:00:00.000Z",
-    messages: [
-      {
-        id: "m-3",
-        role: "user",
-        content: "What automated journeys are currently active?",
-      },
-    ],
-  },
-];
+function fmtPct(r: number | null | undefined) {
+  if (r == null) return "—";
+  return `${(Number(r) * 100).toFixed(1)}%`;
+}
 
-const demoSuggestionChips = [
-  "What lift did we get from SMS campaigns last month?",
-  "What images perform best with Graduate students?",
-  "How many FAFSA email recipients ended up enrolling?",
-  "Show me all active automations and when they last ran.",
-];
+export default function DashboardPage() {
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth() + 1);
 
-const ERROR_MESSAGE =
-  "Something went wrong. Please check that the backend is running at the configured API URL and try again.";
+  // Data state
+  const [overall, setOverall] = useState<MetricsOverall | null>(null);
+  const [trend, setTrend] = useState<TrendRow[]>([]);
+  const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [calDays, setCalDays] = useState<CalendarDay[]>([]);
+  const [searchResults, setSearchResults] = useState<EmailSearchResult[]>([]);
 
-export default function Home() {
-  const [conversations, setConversations] = useState<Conversation[]>(starterConversations);
-  const [activeConversationId, setActiveConversationId] = useState<string>(starterConversations[0].id);
-  const [draft, setDraft] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingLabel, setLoadingLabel] = useState("Thinking");
+  // Loading state
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [loadingTrend, setLoadingTrend] = useState(true);
+  const [loadingJourneys, setLoadingJourneys] = useState(true);
+  const [loadingCal, setLoadingCal] = useState(true);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  const activeConversation = useMemo(
-    () => conversations.find((c) => c.id === activeConversationId) ?? conversations[0],
-    [conversations, activeConversationId],
-  );
+  // Error state (non-fatal: shown inline per section)
+  const [metricsError, setMetricsError] = useState(false);
 
-  const topBarTitle = useMemo(
-    () => truncateTitle(activeConversation?.title ?? "New conversation", 60),
-    [activeConversation],
-  );
+  // Initial data load
+  useEffect(() => {
+    fetchMetricsSummary()
+      .then((d) => { setOverall(d.overall); setLoadingMetrics(false); })
+      .catch(() => { setLoadingMetrics(false); setMetricsError(true); });
 
-  function onNewConversation() {
-    const newId = `conv-${Date.now()}`;
-    const newConversation: Conversation = {
-      id: newId,
-      title: "New conversation",
-      updatedAt: new Date().toISOString(),
-      messages: [],
-    };
-    setConversations((prev) => [newConversation, ...prev]);
-    setActiveConversationId(newId);
-  }
+    fetchMetricsTrend(30)
+      .then((d) => { setTrend(d.trend); setLoadingTrend(false); })
+      .catch(() => setLoadingTrend(false));
 
-  function onSuggestionClick(text: string) {
-    setDraft(text);
-  }
+    fetchJourneys()
+      .then((d) => { setJourneys(d.journeys); setLoadingJourneys(false); })
+      .catch(() => setLoadingJourneys(false));
+  }, []);
 
-  function appendMessage(conversationId: string, message: Message) {
-    setConversations((prev) =>
-      prev.map((conversation) => {
-        if (conversation.id !== conversationId) return conversation;
-        const nextMessages = [...conversation.messages, message];
-        const firstUserMessage = nextMessages.find((msg) => msg.role === "user");
-        return {
-          ...conversation,
-          messages: nextMessages,
-          title: firstUserMessage ? firstUserMessage.content : conversation.title,
-          updatedAt: new Date().toISOString(),
-        };
-      }),
-    );
-  }
+  // Calendar reload on month change
+  useEffect(() => {
+    setLoadingCal(true);
+    fetchCalendar(calYear, calMonth)
+      .then((d) => { setCalDays(d.days); setLoadingCal(false); })
+      .catch(() => setLoadingCal(false));
+  }, [calYear, calMonth]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.trim() || !activeConversation) return;
+  const handleMonthChange = useCallback((y: number, m: number) => {
+    setCalYear(y);
+    setCalMonth(m);
+  }, []);
 
-    const userText = draft.trim();
-    setDraft("");
-    appendMessage(activeConversation.id, {
-      id: `m-${Date.now()}-user`,
-      role: "user",
-      content: userText,
-    });
-
-    setLoadingLabel("Thinking");
-    setIsLoading(true);
-
+  const handleSearch = useCallback(async (params: {
+    copy: string;
+    business_unit: string;
+    date_from: string;
+    date_to: string;
+    sender: string;
+  }) => {
+    setLoadingSearch(true);
+    setSearched(true);
     try {
-      const data = await sendChatMessage(userText, activeConversation.id);
-      const agentMessage: Message = {
-        id: `m-${Date.now()}-agent`,
-        role: "agent",
-        responseType: data.response_type === "clarification" ? "info" : "answer",
-        agentChain: null,
-        content: data.response,
-      };
-      appendMessage(activeConversation.id, agentMessage);
+      const data = await fetchEmailSearch(params);
+      setSearchResults(data.results);
     } catch {
-      appendMessage(activeConversation.id, {
-        id: `m-${Date.now()}-agent`,
-        role: "agent",
-        responseType: "info",
-        content: ERROR_MESSAGE,
-      });
+      setSearchResults([]);
     } finally {
-      setIsLoading(false);
+      setLoadingSearch(false);
     }
-  }
-
-  const hasNoMessages = (activeConversation?.messages.length ?? 0) === 0;
+  }, []);
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={setActiveConversationId}
-        onNewConversation={onNewConversation}
-      />
+    <div className="dashboard-shell">
+      {/* Sidebar */}
+      <aside className="sidebar-root">
+        <div className="sidebar-header">
+          <h1 className="sidebar-app-name">Marketing Ops AI</h1>
+          <p className="sidebar-powered-by">Powered by Claude</p>
+        </div>
 
-      <main className="main-area">
-        <header className="topbar">
-          <h2>{topBarTitle}</h2>
+        <nav className="sidebar-nav-links">
+          <span className="sidebar-nav-item active">Dashboard</span>
+          <Link href="/chat" className="sidebar-nav-item">
+            AI Chat →
+          </Link>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-footer-divider" />
+          <p>Marketing Ops · Internal Tool</p>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <div className="dashboard-main">
+        <header className="topbar dashboard-topbar">
+          <h2>Marketing Ops Dashboard</h2>
+          <span className="topbar-period">Last 30 days</span>
         </header>
 
-        <section className="chat-scroll-area">
-          <div className="chat-max-width">
-            {hasNoMessages ? (
-              <div className="chip-wrap">
-                {demoSuggestionChips.map((chip) => (
-                  <button
-                    key={chip}
-                    type="button"
-                    className="suggestion-chip"
-                    onClick={() => onSuggestionClick(chip)}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <MessageList
-              messages={activeConversation?.messages ?? []}
-              isLoading={isLoading}
-              loadingLabel={loadingLabel}
-            />
-          </div>
-        </section>
+        <div className="dashboard-scroll">
 
-        <footer className="input-bar">
-          <form className="input-form" onSubmit={onSubmit}>
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask about campaign performance, assets, or next steps..."
-              className="chat-input"
-              disabled={isLoading}
-            />
-            <button type="submit" className="send-button" disabled={isLoading || !draft.trim()}>
-              Send
-            </button>
-          </form>
-        </footer>
-      </main>
+          {/* ── KPI Cards ── */}
+          <section className="dashboard-section">
+            <h3 className="section-title">Send Performance</h3>
+            {metricsError ? (
+              <p className="section-error">Could not load metrics — check backend connection.</p>
+            ) : (
+              <div className="kpi-grid">
+                <MetricCard
+                  title="Total Sends"
+                  value={fmtNum(overall?.total_sends)}
+                  loading={loadingMetrics}
+                />
+                <MetricCard
+                  title="Deliveries"
+                  value={fmtNum(overall?.deliveries)}
+                  sub={`${fmtPct(overall?.avg_delivery_rate)} delivery rate`}
+                  loading={loadingMetrics}
+                />
+                <MetricCard
+                  title="Avg Open Rate"
+                  value={fmtPct(overall?.avg_open_rate)}
+                  loading={loadingMetrics}
+                />
+                <MetricCard
+                  title="Avg Click Rate"
+                  value={fmtPct(overall?.avg_click_rate)}
+                  loading={loadingMetrics}
+                />
+                <MetricCard
+                  title="Click-to-Open"
+                  value={fmtPct(overall?.avg_ctor)}
+                  loading={loadingMetrics}
+                />
+              </div>
+            )}
+          </section>
+
+          {/* ── Trend Chart + Journeys ── */}
+          <section className="dashboard-section">
+            <div className="dashboard-two-col">
+              <div className="dashboard-card">
+                <h3 className="section-title">Daily Trend</h3>
+                <TrendChart data={trend} loading={loadingTrend} />
+              </div>
+              <div className="dashboard-card journeys-card">
+                <h3 className="section-title">Journeys</h3>
+                <JourneysPanel journeys={journeys} loading={loadingJourneys} />
+              </div>
+            </div>
+          </section>
+
+          {/* ── Sends Calendar ── */}
+          <section className="dashboard-section">
+            <div className="dashboard-card">
+              <h3 className="section-title">Sends Calendar</h3>
+              <SendsCalendar
+                data={calDays}
+                year={calYear}
+                month={calMonth}
+                onMonthChange={handleMonthChange}
+                loading={loadingCal}
+              />
+            </div>
+          </section>
+
+          {/* ── Email Asset Search ── */}
+          <section className="dashboard-section">
+            <div className="dashboard-card">
+              <h3 className="section-title">Email Asset Search</h3>
+              <p className="section-subtitle">
+                Search by email copy, subject line, business unit, sender, or send date range.
+              </p>
+              <EmailSearchPanel
+                onSearch={handleSearch}
+                results={searchResults}
+                loading={loadingSearch}
+                searched={searched}
+              />
+            </div>
+          </section>
+
+          {/* ── AI Chat Bar ── */}
+          <DashboardChatBar />
+
+        </div>
+      </div>
     </div>
   );
 }
