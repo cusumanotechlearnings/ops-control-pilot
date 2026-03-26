@@ -21,6 +21,8 @@ import {
   JourneysPanel,
   EmailSearchPanel,
   DashboardChatBar,
+  FilterBar,
+  type GlobalFilters,
 } from "./components/dashboard";
 
 function fmtNum(n: number | null | undefined) {
@@ -41,7 +43,14 @@ function fmtSentiment(v: number | null | undefined) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
 }
 
+const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "" };
+
 export default function DashboardPage() {
+  // Global filter state
+  const [filters, setFilters] = useState<GlobalFilters>(EMPTY_FILTERS);
+
+  // Calendar navigation (controlled separately so the calendar can still be
+  // browsed manually, but auto-navigates to the filter start date when set)
   const [calYear, setCalYear] = useState<number | null>(null);
   const [calMonth, setCalMonth] = useState<number | null>(null);
 
@@ -60,28 +69,59 @@ export default function DashboardPage() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  // Error state (non-fatal: shown inline per section)
   const [metricsError, setMetricsError] = useState(false);
 
-  // Initial data load
+  // ── Metrics + trend: re-fetch whenever filters change ──────────────────────
   useEffect(() => {
-    fetchMetricsSummary(365)
+    setLoadingMetrics(true);
+    setMetricsError(false);
+    fetchMetricsSummary({
+      days: 365,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      businessUnit: filters.audience || undefined,
+    })
       .then((d) => { setOverall(d.overall); setLoadingMetrics(false); })
       .catch(() => { setLoadingMetrics(false); setMetricsError(true); });
+  }, [filters]);
 
-    fetchMetricsTrend(90)
+  useEffect(() => {
+    setLoadingTrend(true);
+    fetchMetricsTrend({
+      days: 90,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      businessUnit: filters.audience || undefined,
+    })
       .then((d) => { setTrend(d.trend); setLoadingTrend(false); })
       .catch(() => setLoadingTrend(false));
+  }, [filters]);
 
-    fetchJourneys()
+  useEffect(() => {
+    setLoadingJourneys(true);
+    fetchJourneys(undefined, filters.audience || undefined)
       .then((d) => { setJourneys(d.journeys); setLoadingJourneys(false); })
       .catch(() => setLoadingJourneys(false));
-  }, []);
+  }, [filters]);
 
-  // Calendar reload on month change; first load defaults to current month
+  // ── Calendar: re-fetch on month/BU change; auto-navigate on dateFrom ───────
+  useEffect(() => {
+    // When a date range filter is applied, jump the calendar to that start month
+    if (filters.dateFrom) {
+      const d = new Date(filters.dateFrom + "T00:00:00");
+      setCalYear(d.getFullYear());
+      setCalMonth(d.getMonth() + 1);
+      return; // the month-change useEffect below will pick this up
+    }
+  }, [filters.dateFrom]);
+
   useEffect(() => {
     setLoadingCal(true);
-    fetchUpcomingCalendar(calYear ?? undefined, calMonth ?? undefined)
+    fetchUpcomingCalendar(
+      calYear ?? undefined,
+      calMonth ?? undefined,
+      filters.audience || undefined,
+    )
       .then((d) => {
         setCalDays(d.days);
         setCalYear(d.year);
@@ -89,7 +129,7 @@ export default function DashboardPage() {
         setLoadingCal(false);
       })
       .catch(() => setLoadingCal(false));
-  }, [calYear, calMonth]);
+  }, [calYear, calMonth, filters.audience]);
 
   const handleMonthChange = useCallback((y: number, m: number) => {
     setCalYear(y);
@@ -114,6 +154,28 @@ export default function DashboardPage() {
       setLoadingSearch(false);
     }
   }, []);
+
+  const handleFiltersApply = useCallback((next: GlobalFilters) => {
+    setFilters(next);
+  }, []);
+
+  // Build a human-readable period label for the topbar
+  const periodLabel = (() => {
+    const hasDate = filters.dateFrom || filters.dateTo;
+    if (hasDate) {
+      const from = filters.dateFrom
+        ? new Date(filters.dateFrom + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "…";
+      const to = filters.dateTo
+        ? new Date(filters.dateTo + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "…";
+      return `${from} – ${to}`;
+    }
+    if (overall?.earliest_date && overall?.latest_date) {
+      return `${new Date(overall.earliest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${new Date(overall.latest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
+    }
+    return "Last 12 months";
+  })();
 
   return (
     <div className="dashboard-shell">
@@ -141,11 +203,10 @@ export default function DashboardPage() {
       <div className="dashboard-main">
         <header className="topbar dashboard-topbar">
           <h2>Marketing Ops Dashboard</h2>
-          <span className="topbar-period">
-            {overall?.earliest_date && overall?.latest_date
-              ? `${new Date(overall.earliest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${new Date(overall.latest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
-              : "Last 12 months"}
-          </span>
+          <div className="topbar-right">
+            <span className="topbar-period">{periodLabel}</span>
+            <FilterBar filters={filters} onApply={handleFiltersApply} />
+          </div>
         </header>
 
         <div className="dashboard-scroll">
@@ -233,12 +294,18 @@ export default function DashboardPage() {
               <h3 className="section-title">Email Asset Search</h3>
               <p className="section-subtitle">
                 Search by email copy, subject line, business unit, sender, or send date range.
+                {(filters.dateFrom || filters.dateTo || filters.audience) && (
+                  <span className="search-filter-hint"> Global filters pre-applied below.</span>
+                )}
               </p>
               <EmailSearchPanel
                 onSearch={handleSearch}
                 results={searchResults}
                 loading={loadingSearch}
                 searched={searched}
+                externalDateFrom={filters.dateFrom}
+                externalDateTo={filters.dateTo}
+                externalBu={filters.audience}
               />
             </div>
           </section>

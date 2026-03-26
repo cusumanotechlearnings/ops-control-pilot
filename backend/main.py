@@ -73,14 +73,58 @@ async def chat_endpoint(req: ChatRequest):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/metrics/summary")
-async def metrics_summary(days: int = Query(default=365, ge=7, le=1825)):
+async def metrics_summary(
+    days: int = Query(default=365, ge=7, le=1825),
+    date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
+    business_unit: Optional[str] = Query(default=None),
+):
     """
-    Aggregate KPI totals anchored to the latest send_date in the database,
-    so results are always populated regardless of when the app is run.
-    Rates stored as decimals (0.35 = 35%); returned as-is for the frontend.
+    Aggregate KPI totals. When date_from/date_to are provided they take
+    precedence over the relative `days` window. Optionally filter by BU.
     """
     actual_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
-    sql = """
+    params: dict = {}
+
+    # Date window clause (no aliases — used in the flat dod_metrics table)
+    if date_from or date_to:
+        parts = []
+        if date_from:
+            parts.append("send_date >= %(date_from)s")
+            params["date_from"] = date_from
+        if date_to:
+            parts.append("send_date <= %(date_to)s")
+            params["date_to"] = date_to
+        date_clause = "AND " + " AND ".join(parts)
+    else:
+        date_clause = (
+            f"AND send_date >= "
+            f"(SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter})"
+            f" - INTERVAL '{days} days'"
+        )
+
+    bu_clause = ""
+    if business_unit:
+        bu_clause = "AND business_unit = %(business_unit)s"
+        params["business_unit"] = business_unit
+
+    # Same clauses but with d. prefix for the sentiment join query
+    if date_from or date_to:
+        d_parts = []
+        if date_from:
+            d_parts.append("d.send_date >= %(date_from)s")
+        if date_to:
+            d_parts.append("d.send_date <= %(date_to)s")
+        d_date_clause = "AND " + " AND ".join(d_parts)
+    else:
+        d_date_clause = (
+            f"AND d.send_date >= "
+            f"(SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter})"
+            f" - INTERVAL '{days} days'"
+        )
+    d_bu_clause = "AND d.business_unit = %(business_unit)s" if business_unit else ""
+
+    sql = f"""
         SELECT
             business_unit,
             SUM(total_sends)        AS total_sends,
@@ -93,13 +137,12 @@ async def metrics_summary(days: int = Query(default=365, ge=7, le=1825)):
             AVG(click_to_open_rate) AS avg_ctor
         FROM dod_metrics
         WHERE {actual_filter}
-          AND send_date >= (
-                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
-              ) - INTERVAL '{days} days'
+          {date_clause}
+          {bu_clause}
         GROUP BY business_unit
         ORDER BY business_unit
-    """.format(actual_filter=actual_filter, days=days)
-    overall_sql = """
+    """
+    overall_sql = f"""
         SELECT
             SUM(total_sends)        AS total_sends,
             SUM(deliveries)         AS deliveries,
@@ -113,28 +156,26 @@ async def metrics_summary(days: int = Query(default=365, ge=7, le=1825)):
             MIN(send_date)          AS earliest_date
         FROM dod_metrics
         WHERE {actual_filter}
-          AND send_date >= (
-                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
-              ) - INTERVAL '{days} days'
-    """.format(actual_filter=actual_filter, days=days)
-    sentiment_sql = """
+          {date_clause}
+          {bu_clause}
+    """
+    sentiment_sql = f"""
         SELECT AVG(v.sentiment_value) AS avg_sentiment
         FROM voc_responses v
         JOIN dod_metrics d ON v.dod_metric_id = d.id
-        WHERE {actual_filter}
-          AND d.send_date >= (
-                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
-              ) - INTERVAL '{days} days'
-    """.format(actual_filter=actual_filter, days=days)
+        WHERE (d.is_planned IS FALSE OR d.is_planned IS NULL)
+          {d_date_clause}
+          {d_bu_clause}
+    """
 
     try:
-        rows = query_db(sql)
-        overall = query_db(overall_sql)
+        rows = query_db(sql, params or None)
+        overall = query_db(overall_sql, params or None)
         result = overall[0] if overall else {}
         for col in ("latest_date", "earliest_date"):
             if result.get(col):
                 result[col] = str(result[col])
-        sentiment = query_db(sentiment_sql)
+        sentiment = query_db(sentiment_sql, params or None)
         result["avg_sentiment"] = float(sentiment[0]["avg_sentiment"]) if sentiment and sentiment[0].get("avg_sentiment") is not None else None
         return {"by_bu": rows, "overall": result, "days": days}
     except HTTPException:
@@ -144,15 +185,42 @@ async def metrics_summary(days: int = Query(default=365, ge=7, le=1825)):
 
 
 @app.get("/api/metrics/trend")
-async def metrics_trend(days: int = Query(default=90, ge=7, le=730)):
+async def metrics_trend(
+    days: int = Query(default=90, ge=7, le=730),
+    date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
+    business_unit: Optional[str] = Query(default=None),
+):
     """
-    Daily delivery/open/click/sentiment counts broken down by business_unit
-    (audience), anchored to the latest send_date in the database so the chart
-    always shows real data.
+    Daily delivery/open/click/sentiment counts broken down by business_unit.
+    When date_from/date_to are provided they override the relative `days` window.
     """
     actual_filter = "(d.is_planned IS FALSE OR d.is_planned IS NULL)"
     anchor_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
-    sql = """
+    params: dict = {}
+
+    if date_from or date_to:
+        d_parts = []
+        if date_from:
+            d_parts.append("d.send_date >= %(date_from)s")
+            params["date_from"] = date_from
+        if date_to:
+            d_parts.append("d.send_date <= %(date_to)s")
+            params["date_to"] = date_to
+        date_clause = "AND " + " AND ".join(d_parts)
+    else:
+        date_clause = (
+            f"AND d.send_date >= "
+            f"(SELECT MAX(send_date) FROM dod_metrics WHERE {anchor_filter})"
+            f" - INTERVAL '{days} days'"
+        )
+
+    bu_clause = ""
+    if business_unit:
+        bu_clause = "AND d.business_unit = %(business_unit)s"
+        params["business_unit"] = business_unit
+
+    sql = f"""
         SELECT
             d.send_date,
             d.business_unit,
@@ -166,14 +234,13 @@ async def metrics_trend(days: int = Query(default=90, ge=7, le=730)):
         FROM dod_metrics d
         LEFT JOIN voc_responses v ON v.dod_metric_id = d.id
         WHERE {actual_filter}
-          AND d.send_date >= (
-                SELECT MAX(send_date) FROM dod_metrics WHERE {anchor_filter}
-              ) - INTERVAL '{days} days'
+          {date_clause}
+          {bu_clause}
         GROUP BY d.send_date, d.business_unit
         ORDER BY d.send_date ASC, d.business_unit
-    """.format(actual_filter=actual_filter, anchor_filter=anchor_filter, days=days)
+    """
     try:
-        rows = query_db(sql)
+        rows = query_db(sql, params or None)
         for row in rows:
             if row.get("send_date"):
                 row["send_date"] = str(row["send_date"])
@@ -191,12 +258,25 @@ async def metrics_trend(days: int = Query(default=90, ge=7, le=730)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/journeys")
-async def journeys_list(status: Optional[str] = Query(default=None)):
+async def journeys_list(
+    status: Optional[str] = Query(default=None),
+    business_unit: Optional[str] = Query(default=None),
+):
     """
     List journeys with their latest send date and entry source frequency.
-    Optionally filter by status (Active, Stopped, Draft, Paused, Complete).
+    Optionally filter by status (Active, Stopped, Draft, Paused, Complete)
+    and/or business_unit.
     """
-    status_filter = "AND j.status = %(status)s" if status else ""
+    params: dict = {}
+    status_filter = ""
+    if status:
+        status_filter = "AND j.status = %(status)s"
+        params["status"] = status
+    bu_filter = ""
+    if business_unit:
+        bu_filter = "AND j.business_unit = %(business_unit)s"
+        params["business_unit"] = business_unit
+
     sql = f"""
         SELECT
             j.journey_id,
@@ -217,6 +297,7 @@ async def journeys_list(status: Optional[str] = Query(default=None)):
         LEFT JOIN journey_entry_sources jes ON jes.journey_id = j.journey_id
         WHERE 1=1
         {status_filter}
+        {bu_filter}
         GROUP BY
             j.journey_id, j.journey_name, j.business_unit, j.status,
             j.target_audience, j.department, j.created_date, j.last_modified_date,
@@ -224,8 +305,7 @@ async def journeys_list(status: Optional[str] = Query(default=None)):
         ORDER BY j.status, j.journey_name
     """
     try:
-        params = {"status": status} if status else None
-        rows = query_db(sql, params)
+        rows = query_db(sql, params or None)
         for row in rows:
             for date_col in ("last_send_date", "first_send_date", "created_date",
                              "last_modified_date", "schedule_start_time", "schedule_end_time"):
@@ -309,19 +389,24 @@ async def sends_calendar(
 async def upcoming_sends_calendar(
     year: int = Query(default=None),
     month: int = Query(default=None, ge=1, le=12),
+    business_unit: Optional[str] = Query(default=None),
 ):
     """
-    Upcoming journey calendar for the given month/year.
-    Each calendar day shows journeys whose schedule_start_time falls on that date
-    (sourced from journey_entry_sources joined to journeys).
-    Defaults to the current calendar month.
+    Upcoming journey calendar for the given month/year, optionally filtered
+    by business_unit. Defaults to the current calendar month.
     """
     from datetime import date as _date
     today = _date.today()
     y = year if year is not None else today.year
     m = month if month is not None else today.month
 
-    sql = """
+    params: dict = {"year": y, "month": m}
+    bu_filter = ""
+    if business_unit:
+        bu_filter = "AND j.business_unit = %(business_unit)s"
+        params["business_unit"] = business_unit
+
+    sql = f"""
         SELECT
             DATE(jes.schedule_start_time)                               AS send_date,
             COUNT(*)                                                    AS send_count,
@@ -337,11 +422,12 @@ async def upcoming_sends_calendar(
         JOIN journeys j ON j.journey_id = jes.journey_id
         WHERE EXTRACT(YEAR  FROM jes.schedule_start_time) = %(year)s
           AND EXTRACT(MONTH FROM jes.schedule_start_time) = %(month)s
+          {bu_filter}
         GROUP BY DATE(jes.schedule_start_time)
         ORDER BY DATE(jes.schedule_start_time)
     """
     try:
-        rows = query_db(sql, {"year": y, "month": m})
+        rows = query_db(sql, params)
         for row in rows:
             if row.get("send_date"):
                 row["send_date"] = str(row["send_date"])

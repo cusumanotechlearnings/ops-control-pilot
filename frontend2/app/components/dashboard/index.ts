@@ -4,3 +4,5 @@ export { SendsCalendar } from "./SendsCalendar";
 export { JourneysPanel } from "./JourneysPanel";
 export { EmailSearchPanel } from "./EmailSearchPanel";
 export { DashboardChatBar } from "./DashboardChatBar";
+export { FilterBar } from "./FilterBar";
+export type { GlobalFilters } from "./FilterBar";
