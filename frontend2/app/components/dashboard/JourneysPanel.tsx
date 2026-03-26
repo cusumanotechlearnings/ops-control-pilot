@@ -53,7 +53,7 @@ export function JourneysPanel({ journeys, loading }: JourneysPanelProps) {
     return matchStatus && matchSearch;
   });
 
-  const statuses = ["All", "Active", "Paused", "Stopped", "Complete", "Draft"];
+  const statuses = ["All", "Active", "Stopped", "Draft"];
 
   return (
     <div className="journeys-panel">
