@@ -73,45 +73,70 @@ async def chat_endpoint(req: ChatRequest):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/metrics/summary")
-async def metrics_summary():
+async def metrics_summary(days: int = Query(default=365, ge=7, le=1825)):
     """
-    Aggregate KPI totals for the last 30 days, overall and by business unit.
-    Rates stored as decimals (0.35 = 35%); returned as-is for the frontend to format.
+    Aggregate KPI totals anchored to the latest send_date in the database,
+    so results are always populated regardless of when the app is run.
+    Rates stored as decimals (0.35 = 35%); returned as-is for the frontend.
     """
+    actual_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
     sql = """
         SELECT
             business_unit,
-            SUM(total_sends)       AS total_sends,
-            SUM(deliveries)        AS deliveries,
-            SUM(total_opens)       AS total_opens,
-            SUM(total_clicks)      AS total_clicks,
-            AVG(open_rate)         AS avg_open_rate,
-            AVG(click_rate)        AS avg_click_rate,
-            AVG(delivery_rate)     AS avg_delivery_rate,
+            SUM(total_sends)        AS total_sends,
+            SUM(deliveries)         AS deliveries,
+            SUM(total_opens)        AS total_opens,
+            SUM(total_clicks)       AS total_clicks,
+            AVG(open_rate)          AS avg_open_rate,
+            AVG(click_rate)         AS avg_click_rate,
+            AVG(delivery_rate)      AS avg_delivery_rate,
             AVG(click_to_open_rate) AS avg_ctor
         FROM dod_metrics
-        WHERE send_date >= CURRENT_DATE - INTERVAL '30 days'
+        WHERE {actual_filter}
+          AND send_date >= (
+                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
+              ) - INTERVAL '{days} days'
         GROUP BY business_unit
         ORDER BY business_unit
-    """
+    """.format(actual_filter=actual_filter, days=days)
+    overall_sql = """
+        SELECT
+            SUM(total_sends)        AS total_sends,
+            SUM(deliveries)         AS deliveries,
+            SUM(total_opens)        AS total_opens,
+            SUM(total_clicks)       AS total_clicks,
+            AVG(open_rate)          AS avg_open_rate,
+            AVG(click_rate)         AS avg_click_rate,
+            AVG(delivery_rate)      AS avg_delivery_rate,
+            AVG(click_to_open_rate) AS avg_ctor,
+            MAX(send_date)          AS latest_date,
+            MIN(send_date)          AS earliest_date
+        FROM dod_metrics
+        WHERE {actual_filter}
+          AND send_date >= (
+                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
+              ) - INTERVAL '{days} days'
+    """.format(actual_filter=actual_filter, days=days)
+    sentiment_sql = """
+        SELECT AVG(v.sentiment_value) AS avg_sentiment
+        FROM voc_responses v
+        JOIN dod_metrics d ON v.dod_metric_id = d.id
+        WHERE {actual_filter}
+          AND d.send_date >= (
+                SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter}
+              ) - INTERVAL '{days} days'
+    """.format(actual_filter=actual_filter, days=days)
+
     try:
         rows = query_db(sql)
-        # Also compute overall totals
-        overall_sql = """
-            SELECT
-                SUM(total_sends)       AS total_sends,
-                SUM(deliveries)        AS deliveries,
-                SUM(total_opens)       AS total_opens,
-                SUM(total_clicks)      AS total_clicks,
-                AVG(open_rate)         AS avg_open_rate,
-                AVG(click_rate)        AS avg_click_rate,
-                AVG(delivery_rate)     AS avg_delivery_rate,
-                AVG(click_to_open_rate) AS avg_ctor
-            FROM dod_metrics
-            WHERE send_date >= CURRENT_DATE - INTERVAL '30 days'
-        """
         overall = query_db(overall_sql)
-        return {"by_bu": rows, "overall": overall[0] if overall else {}}
+        result = overall[0] if overall else {}
+        for col in ("latest_date", "earliest_date"):
+            if result.get(col):
+                result[col] = str(result[col])
+        sentiment = query_db(sentiment_sql)
+        result["avg_sentiment"] = float(sentiment[0]["avg_sentiment"]) if sentiment and sentiment[0].get("avg_sentiment") is not None else None
+        return {"by_bu": rows, "overall": result, "days": days}
     except HTTPException:
         raise
     except Exception as e:
@@ -119,27 +144,41 @@ async def metrics_summary():
 
 
 @app.get("/api/metrics/trend")
-async def metrics_trend(days: int = Query(default=30, ge=7, le=365)):
-    """Daily delivery/open/click counts for the trend chart."""
+async def metrics_trend(days: int = Query(default=90, ge=7, le=730)):
+    """
+    Daily delivery/open/click/sentiment counts broken down by business_unit
+    (audience), anchored to the latest send_date in the database so the chart
+    always shows real data.
+    """
+    actual_filter = "(d.is_planned IS FALSE OR d.is_planned IS NULL)"
+    anchor_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
     sql = """
         SELECT
-            send_date,
-            SUM(total_sends)  AS total_sends,
-            SUM(deliveries)   AS deliveries,
-            SUM(total_opens)  AS total_opens,
-            SUM(total_clicks) AS total_clicks,
-            AVG(open_rate)    AS avg_open_rate,
-            AVG(click_rate)   AS avg_click_rate
-        FROM dod_metrics
-        WHERE send_date >= CURRENT_DATE - INTERVAL '%s days'
-        GROUP BY send_date
-        ORDER BY send_date ASC
-    """
+            d.send_date,
+            d.business_unit,
+            SUM(d.total_sends)         AS total_sends,
+            SUM(d.deliveries)          AS deliveries,
+            SUM(d.total_opens)         AS total_opens,
+            SUM(d.total_clicks)        AS total_clicks,
+            AVG(d.open_rate)           AS avg_open_rate,
+            AVG(d.click_rate)          AS avg_click_rate,
+            AVG(v.sentiment_value)     AS avg_sentiment
+        FROM dod_metrics d
+        LEFT JOIN voc_responses v ON v.dod_metric_id = d.id
+        WHERE {actual_filter}
+          AND d.send_date >= (
+                SELECT MAX(send_date) FROM dod_metrics WHERE {anchor_filter}
+              ) - INTERVAL '{days} days'
+        GROUP BY d.send_date, d.business_unit
+        ORDER BY d.send_date ASC, d.business_unit
+    """.format(actual_filter=actual_filter, anchor_filter=anchor_filter, days=days)
     try:
-        rows = query_db(sql % days)
+        rows = query_db(sql)
         for row in rows:
             if row.get("send_date"):
                 row["send_date"] = str(row["send_date"])
+            if row.get("avg_sentiment") is not None:
+                row["avg_sentiment"] = float(row["avg_sentiment"])
         return {"trend": rows}
     except HTTPException:
         raise
@@ -210,29 +249,96 @@ async def sends_calendar(
 ):
     """
     Count of email sends per calendar day for the given month/year.
-    Defaults to the current month if not provided.
+    Defaults to the month of the latest send_date in the database so the
+    calendar always opens on a month that has actual data.
     """
-    from datetime import date
-    today = date.today()
-    y = year or today.year
-    m = month or today.month
+    if year is None or month is None:
+        latest = query_db("SELECT MAX(send_date) AS d FROM dod_metrics")
+        if latest and latest[0].get("d"):
+            anchor = latest[0]["d"]
+            y = year if year is not None else anchor.year
+            m = month if month is not None else anchor.month
+        else:
+            from datetime import date
+            today = date.today()
+            y = year if year is not None else today.year
+            m = month if month is not None else today.month
+    else:
+        y = year
+        m = month
 
     sql = """
         SELECT
             send_date,
-            COUNT(DISTINCT job_id)  AS send_count,
-            SUM(total_sends)        AS total_sends,
-            SUM(deliveries)         AS deliveries,
-            AVG(open_rate)          AS avg_open_rate,
-            AVG(click_rate)         AS avg_click_rate,
-            array_agg(DISTINCT email_name ORDER BY email_name) AS email_names,
+            COUNT(DISTINCT job_id)                              AS send_count,
+            SUM(total_sends)                                    AS total_sends,
+            SUM(CASE WHEN is_planned IS FALSE OR is_planned IS NULL
+                     THEN deliveries ELSE 0 END)                AS deliveries,
+            AVG(CASE WHEN is_planned IS FALSE OR is_planned IS NULL
+                     THEN open_rate  END)                       AS avg_open_rate,
+            AVG(CASE WHEN is_planned IS FALSE OR is_planned IS NULL
+                     THEN click_rate END)                       AS avg_click_rate,
+            BOOL_OR(is_planned = TRUE)                          AS has_planned,
+            BOOL_OR(is_planned IS FALSE OR is_planned IS NULL)  AS has_actual,
+            array_agg(DISTINCT email_name   ORDER BY email_name) AS email_names,
             array_agg(DISTINCT journey_name ORDER BY journey_name)
-                FILTER (WHERE journey_name IS NOT NULL) AS journey_names
+                FILTER (WHERE journey_name IS NOT NULL)         AS journey_names
         FROM dod_metrics
         WHERE EXTRACT(YEAR  FROM send_date) = %(year)s
           AND EXTRACT(MONTH FROM send_date) = %(month)s
         GROUP BY send_date
         ORDER BY send_date
+    """
+    try:
+        rows = query_db(sql, {"year": y, "month": m})
+        for row in rows:
+            if row.get("send_date"):
+                row["send_date"] = str(row["send_date"])
+        return {"year": y, "month": m, "days": rows}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — Upcoming Sends Calendar (future planned sends)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sends/upcoming-calendar")
+async def upcoming_sends_calendar(
+    year: int = Query(default=None),
+    month: int = Query(default=None, ge=1, le=12),
+):
+    """
+    Upcoming journey calendar for the given month/year.
+    Each calendar day shows journeys whose schedule_start_time falls on that date
+    (sourced from journey_entry_sources joined to journeys).
+    Defaults to the current calendar month.
+    """
+    from datetime import date as _date
+    today = _date.today()
+    y = year if year is not None else today.year
+    m = month if month is not None else today.month
+
+    sql = """
+        SELECT
+            DATE(jes.schedule_start_time)                               AS send_date,
+            COUNT(*)                                                    AS send_count,
+            0                                                           AS total_sends,
+            0                                                           AS deliveries,
+            NULL::NUMERIC                                               AS avg_open_rate,
+            NULL::NUMERIC                                               AS avg_click_rate,
+            TRUE                                                        AS has_planned,
+            FALSE                                                       AS has_actual,
+            ARRAY[]::TEXT[]                                             AS email_names,
+            array_agg(j.journey_name ORDER BY j.journey_name)          AS journey_names
+        FROM journey_entry_sources jes
+        JOIN journeys j ON j.journey_id = jes.journey_id
+        WHERE EXTRACT(YEAR  FROM jes.schedule_start_time) = %(year)s
+          AND EXTRACT(MONTH FROM jes.schedule_start_time) = %(month)s
+        GROUP BY DATE(jes.schedule_start_time)
+        ORDER BY DATE(jes.schedule_start_time)
     """
     try:
         rows = query_db(sql, {"year": y, "month": m})

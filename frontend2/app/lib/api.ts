@@ -56,6 +56,9 @@ export type MetricsOverall = {
   avg_click_rate: number;
   avg_delivery_rate: number;
   avg_ctor: number;
+  avg_sentiment: number | null;
+  latest_date?: string;
+  earliest_date?: string;
 };
 
 export type MetricsSummaryResponse = {
@@ -65,12 +68,14 @@ export type MetricsSummaryResponse = {
 
 export type TrendRow = {
   send_date: string;
+  business_unit: string;
   total_sends: number;
   deliveries: number;
   total_opens: number;
   total_clicks: number;
   avg_open_rate: number;
   avg_click_rate: number;
+  avg_sentiment: number | null;
 };
 
 export type TrendResponse = { trend: TrendRow[] };
@@ -96,8 +101,10 @@ export type CalendarDay = {
   send_count: number;
   total_sends: number;
   deliveries: number;
-  avg_open_rate: number;
-  avg_click_rate: number;
+  avg_open_rate: number | null;
+  avg_click_rate: number | null;
+  has_planned: boolean;
+  has_actual: boolean;
   email_names: string[];
   journey_names: string[];
 };
@@ -142,8 +149,8 @@ async function apiFetch<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function fetchMetricsSummary(): Promise<MetricsSummaryResponse> {
-  return apiFetch(`${API_BASE}/api/metrics/summary`);
+export async function fetchMetricsSummary(days = 365): Promise<MetricsSummaryResponse> {
+  return apiFetch(`${API_BASE}/api/metrics/summary?days=${days}`);
 }
 
 export async function fetchMetricsTrend(days = 30): Promise<TrendResponse> {
@@ -155,8 +162,20 @@ export async function fetchJourneys(status?: string): Promise<JourneysResponse> 
   return apiFetch(`${API_BASE}/api/journeys${qs}`);
 }
 
-export async function fetchCalendar(year: number, month: number): Promise<CalendarResponse> {
-  return apiFetch(`${API_BASE}/api/sends/calendar?year=${year}&month=${month}`);
+export async function fetchCalendar(year?: number, month?: number): Promise<CalendarResponse> {
+  const qs = new URLSearchParams();
+  if (year != null) qs.set("year", String(year));
+  if (month != null) qs.set("month", String(month));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/sends/calendar${query}`);
+}
+
+export async function fetchUpcomingCalendar(year?: number, month?: number): Promise<CalendarResponse> {
+  const qs = new URLSearchParams();
+  if (year != null) qs.set("year", String(year));
+  if (month != null) qs.set("month", String(month));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/sends/upcoming-calendar${query}`);
 }
 
 export async function fetchEmailSearch(params: {

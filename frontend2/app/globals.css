@@ -592,7 +592,7 @@ h6 {
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
 }
 
@@ -693,6 +693,45 @@ h6 {
   text-align: center;
 }
 
+.trend-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 2px;
+}
+
+.trend-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.trend-legend-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.trend-sentiment-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+.trend-legend-square {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 /* ==========================================================================
    SENDS CALENDAR
    ========================================================================== */
@@ -707,7 +746,25 @@ h6 {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
+
+.calendar-legend {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.legend-item {
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-actual  { color: var(--accent); }
+.legend-planned { color: #c2820a; }
 
 .calendar-month-label {
   font-size: 14px;
@@ -784,6 +841,21 @@ h6 {
   border-color: var(--accent);
 }
 
+.calendar-cell.planned-only {
+  background: #fef9ec;
+  border-color: #f0d080;
+}
+
+.calendar-cell.planned-only:hover {
+  background: #fdf3d0;
+  border-color: #c2820a;
+}
+
+.calendar-cell.mixed-send {
+  background: linear-gradient(135deg, #eef5f5 50%, #fef9ec 50%);
+  border-color: #c8dede;
+}
+
 .calendar-day-num {
   font-size: 12px;
   font-weight: 500;
@@ -797,6 +869,13 @@ h6 {
   border-radius: 50%;
   background: var(--accent);
   margin-top: 2px;
+}
+
+.calendar-dot.dot-planned {
+  background: transparent;
+  border: 2px solid #c2820a;
+  width: 7px;
+  height: 7px;
 }
 
 .calendar-count {
@@ -840,6 +919,20 @@ h6 {
   margin: 4px 0 0;
   max-width: 280px;
   white-space: normal;
+}
+
+.tooltip-planned-badge {
+  display: inline-block;
+  background: #c2820a;
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ==========================================================================
@@ -1214,13 +1307,15 @@ h6 {
    RESPONSIVE
    ========================================================================== */
 
+@media (max-width: 1200px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 1100px) {
   .dashboard-two-col {
     grid-template-columns: 1fr;
-  }
-
-  .kpi-grid {
-    grid-template-columns: repeat(3, 1fr);
   }
 }
 

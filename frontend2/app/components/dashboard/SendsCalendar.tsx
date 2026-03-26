@@ -7,8 +7,10 @@ type CalendarDay = {
   send_count: number;
   total_sends: number;
   deliveries: number;
-  avg_open_rate: number;
-  avg_click_rate: number;
+  avg_open_rate: number | null;
+  avg_click_rate: number | null;
+  has_planned: boolean;
+  has_actual: boolean;
   email_names: string[];
   journey_names: string[];
 };
@@ -82,6 +84,9 @@ export function SendsCalendar({ data, year, month, onMonthChange, loading }: Sen
         <button type="button" className="cal-nav-btn" onClick={prevMonth}>‹</button>
         <span className="calendar-month-label">{MONTH_NAMES[month - 1]} {year}</span>
         <button type="button" className="cal-nav-btn" onClick={nextMonth}>›</button>
+        <div className="calendar-legend">
+          <span className="legend-item legend-planned">◎ Journey launch</span>
+        </div>
       </div>
 
       <div className="calendar-grid">
@@ -94,18 +99,20 @@ export function SendsCalendar({ data, year, month, onMonthChange, loading }: Sen
           const key = dateKey(day);
           const info = dayMap[key];
           const hasSend = !!info;
+          const isPlannedOnly = hasSend && info.has_planned && !info.has_actual;
+          const isMixed = hasSend && info.has_planned && info.has_actual;
 
           return (
             <div
               key={key}
-              className={`calendar-cell ${hasSend ? "has-send" : ""}`}
+              className={`calendar-cell ${hasSend ? "has-send" : ""} ${isPlannedOnly ? "planned-only" : ""} ${isMixed ? "mixed-send" : ""}`}
               onMouseEnter={() => hasSend && setTooltip(info)}
               onMouseLeave={() => setTooltip(null)}
             >
               <span className="calendar-day-num">{day}</span>
               {hasSend && (
                 <span
-                  className="calendar-dot"
+                  className={`calendar-dot ${isPlannedOnly ? "dot-planned" : ""}`}
                   style={{ opacity: heatOpacity(info.send_count) }}
                 />
               )}
@@ -121,14 +128,28 @@ export function SendsCalendar({ data, year, month, onMonthChange, loading }: Sen
 
       {tooltip && (
         <div className="calendar-tooltip">
-          <p className="tooltip-date">{tooltip.send_date}</p>
-          <p><strong>{tooltip.send_count}</strong> sends · <strong>{fmt(tooltip.total_sends)}</strong> total</p>
-          <p>Deliveries: {fmt(tooltip.deliveries)}</p>
-          <p>Open rate: {pct(tooltip.avg_open_rate)} · Click rate: {pct(tooltip.avg_click_rate)}</p>
+          <p className="tooltip-date">
+            {tooltip.send_date}
+            {tooltip.has_planned && !tooltip.has_actual && (
+              <span className="tooltip-planned-badge"> Scheduled</span>
+            )}
+            {tooltip.has_planned && tooltip.has_actual && (
+              <span className="tooltip-planned-badge"> Partial schedule</span>
+            )}
+          </p>
+          <p>
+            <strong>{tooltip.send_count}</strong> journey{tooltip.send_count !== 1 ? "s" : ""} launching
+            {tooltip.total_sends > 0 && (
+              <> · {tooltip.has_planned && !tooltip.has_actual ? "Projected: " : ""}<strong>{fmt(tooltip.total_sends)}</strong> recipients</>
+            )}
+          </p>
+          {tooltip.has_actual && (
+            <p>Open rate: {pct(tooltip.avg_open_rate)} · Click rate: {pct(tooltip.avg_click_rate)}</p>
+          )}
           {tooltip.journey_names?.length > 0 && (
             <p className="tooltip-journeys">
-              Journeys: {tooltip.journey_names.slice(0, 3).join(", ")}
-              {tooltip.journey_names.length > 3 ? ` +${tooltip.journey_names.length - 3} more` : ""}
+              {tooltip.journey_names.slice(0, 5).join(", ")}
+              {tooltip.journey_names.length > 5 ? ` +${tooltip.journey_names.length - 5} more` : ""}
             </p>
           )}
         </div>

@@ -6,7 +6,7 @@ import {
   fetchMetricsSummary,
   fetchMetricsTrend,
   fetchJourneys,
-  fetchCalendar,
+  fetchUpcomingCalendar,
   fetchEmailSearch,
   type MetricsOverall,
   type TrendRow,
@@ -35,10 +35,15 @@ function fmtPct(r: number | null | undefined) {
   return `${(Number(r) * 100).toFixed(1)}%`;
 }
 
+function fmtSentiment(v: number | null | undefined) {
+  if (v == null) return "—";
+  const n = Number(v);
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
+}
+
 export default function DashboardPage() {
-  const today = new Date();
-  const [calYear, setCalYear] = useState(today.getFullYear());
-  const [calMonth, setCalMonth] = useState(today.getMonth() + 1);
+  const [calYear, setCalYear] = useState<number | null>(null);
+  const [calMonth, setCalMonth] = useState<number | null>(null);
 
   // Data state
   const [overall, setOverall] = useState<MetricsOverall | null>(null);
@@ -60,11 +65,11 @@ export default function DashboardPage() {
 
   // Initial data load
   useEffect(() => {
-    fetchMetricsSummary()
+    fetchMetricsSummary(365)
       .then((d) => { setOverall(d.overall); setLoadingMetrics(false); })
       .catch(() => { setLoadingMetrics(false); setMetricsError(true); });
 
-    fetchMetricsTrend(30)
+    fetchMetricsTrend(90)
       .then((d) => { setTrend(d.trend); setLoadingTrend(false); })
       .catch(() => setLoadingTrend(false));
 
@@ -73,11 +78,16 @@ export default function DashboardPage() {
       .catch(() => setLoadingJourneys(false));
   }, []);
 
-  // Calendar reload on month change
+  // Calendar reload on month change; first load defaults to current month
   useEffect(() => {
     setLoadingCal(true);
-    fetchCalendar(calYear, calMonth)
-      .then((d) => { setCalDays(d.days); setLoadingCal(false); })
+    fetchUpcomingCalendar(calYear ?? undefined, calMonth ?? undefined)
+      .then((d) => {
+        setCalDays(d.days);
+        setCalYear(d.year);
+        setCalMonth(d.month);
+        setLoadingCal(false);
+      })
       .catch(() => setLoadingCal(false));
   }, [calYear, calMonth]);
 
@@ -131,7 +141,11 @@ export default function DashboardPage() {
       <div className="dashboard-main">
         <header className="topbar dashboard-topbar">
           <h2>Marketing Ops Dashboard</h2>
-          <span className="topbar-period">Last 30 days</span>
+          <span className="topbar-period">
+            {overall?.earliest_date && overall?.latest_date
+              ? `${new Date(overall.earliest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${new Date(overall.latest_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
+              : "Last 12 months"}
+          </span>
         </header>
 
         <div className="dashboard-scroll">
@@ -169,35 +183,47 @@ export default function DashboardPage() {
                   value={fmtPct(overall?.avg_ctor)}
                   loading={loadingMetrics}
                 />
+                <MetricCard
+                  title="VOC Sentiment"
+                  value={fmtSentiment(overall?.avg_sentiment)}
+                  sub="avg score (−1 to +1)"
+                  loading={loadingMetrics}
+                />
               </div>
             )}
           </section>
 
-          {/* ── Trend Chart + Journeys ── */}
+          {/* ── Trend Chart ── */}
           <section className="dashboard-section">
-            <div className="dashboard-two-col">
-              <div className="dashboard-card">
-                <h3 className="section-title">Daily Trend</h3>
-                <TrendChart data={trend} loading={loadingTrend} />
-              </div>
-              <div className="dashboard-card journeys-card">
-                <h3 className="section-title">Journeys</h3>
-                <JourneysPanel journeys={journeys} loading={loadingJourneys} />
-              </div>
+            <div className="dashboard-card">
+              <h3 className="section-title">Daily Trend</h3>
+              <TrendChart data={trend} loading={loadingTrend} />
+            </div>
+          </section>
+
+          {/* ── Journeys ── */}
+          <section className="dashboard-section">
+            <div className="dashboard-card journeys-card">
+              <h3 className="section-title">Automated Sends</h3>
+              <JourneysPanel journeys={journeys} loading={loadingJourneys} />
             </div>
           </section>
 
           {/* ── Sends Calendar ── */}
           <section className="dashboard-section">
             <div className="dashboard-card">
-              <h3 className="section-title">Sends Calendar</h3>
-              <SendsCalendar
-                data={calDays}
-                year={calYear}
-                month={calMonth}
-                onMonthChange={handleMonthChange}
-                loading={loadingCal}
-              />
+              <h3 className="section-title">Upcoming Sends</h3>
+              {calYear && calMonth ? (
+                <SendsCalendar
+                  data={calDays}
+                  year={calYear}
+                  month={calMonth}
+                  onMonthChange={handleMonthChange}
+                  loading={loadingCal}
+                />
+              ) : (
+                <p className="section-subtitle">Loading calendar…</p>
+              )}
             </div>
           </section>
 
