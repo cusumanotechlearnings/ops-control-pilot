@@ -169,6 +169,7 @@ export async function fetchMetricsSummary(params?: {
   dateTo?: string;
   businessUnit?: string;
   subjectLine?: string;
+  emailCopy?: string;
 }): Promise<MetricsSummaryResponse> {
   const qs = new URLSearchParams();
   if (params?.days) qs.set("days", String(params.days));
@@ -176,6 +177,7 @@ export async function fetchMetricsSummary(params?: {
   if (params?.dateTo) qs.set("date_to", params.dateTo);
   if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
   if (params?.subjectLine) qs.set("subject_line", params.subjectLine);
+  if (params?.emailCopy) qs.set("email_copy", params.emailCopy);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/metrics/summary${query}`);
 }
@@ -186,6 +188,7 @@ export async function fetchMetricsTrend(params?: {
   dateTo?: string;
   businessUnit?: string;
   subjectLine?: string;
+  emailCopy?: string;
 }): Promise<TrendResponse> {
   const qs = new URLSearchParams();
   if (params?.days) qs.set("days", String(params?.days ?? 90));
@@ -193,15 +196,17 @@ export async function fetchMetricsTrend(params?: {
   if (params?.dateTo) qs.set("date_to", params.dateTo);
   if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
   if (params?.subjectLine) qs.set("subject_line", params.subjectLine);
+  if (params?.emailCopy) qs.set("email_copy", params.emailCopy);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/metrics/trend${query}`);
 }
 
-export async function fetchJourneys(status?: string, businessUnit?: string, subjectLine?: string): Promise<JourneysResponse> {
+export async function fetchJourneys(status?: string, businessUnit?: string, subjectLine?: string, emailCopy?: string): Promise<JourneysResponse> {
   const qs = new URLSearchParams();
   if (status) qs.set("status", status);
   if (businessUnit) qs.set("business_unit", businessUnit);
   if (subjectLine) qs.set("subject_line", subjectLine);
+  if (emailCopy) qs.set("email_copy", emailCopy);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/journeys${query}`);
 }
@@ -214,12 +219,13 @@ export async function fetchCalendar(year?: number, month?: number): Promise<Cale
   return apiFetch(`${API_BASE}/api/sends/calendar${query}`);
 }
 
-export async function fetchUpcomingCalendar(year?: number, month?: number, businessUnit?: string, subjectLine?: string): Promise<CalendarResponse> {
+export async function fetchUpcomingCalendar(year?: number, month?: number, businessUnit?: string, subjectLine?: string, emailCopy?: string): Promise<CalendarResponse> {
   const qs = new URLSearchParams();
   if (year != null) qs.set("year", String(year));
   if (month != null) qs.set("month", String(month));
   if (businessUnit) qs.set("business_unit", businessUnit);
   if (subjectLine) qs.set("subject_line", subjectLine);
+  if (emailCopy) qs.set("email_copy", emailCopy);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/sends/upcoming-calendar${query}`);
 }
@@ -230,6 +236,7 @@ export async function fetchVocResponses(params?: {
   dateTo?: string;
   businessUnit?: string;
   subjectLine?: string;
+  emailCopy?: string;
   limit?: number;
 }): Promise<VocResponsesResponse> {
   const qs = new URLSearchParams();
@@ -238,6 +245,7 @@ export async function fetchVocResponses(params?: {
   if (params?.dateTo) qs.set("date_to", params.dateTo);
   if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
   if (params?.subjectLine) qs.set("subject_line", params.subjectLine);
+  if (params?.emailCopy) qs.set("email_copy", params.emailCopy);
   if (params?.limit) qs.set("limit", String(params.limit));
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/voc-responses${query}`);

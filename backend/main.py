@@ -111,41 +111,55 @@ async def metrics_summary(
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
     subject_line: Optional[str] = Query(default=None, description="LIKE filter on subject_line"),
+    email_copy: Optional[str] = Query(default=None, description="LIKE filter across email subject, pre-header, and body copy"),
 ):
     """
     Aggregate KPI totals. When date_from/date_to are provided they take
-    precedence over the relative `days` window. Optionally filter by BU
-    and/or subject line keyword (case-insensitive substring match).
+    precedence over the relative `days` window. Optionally filter by BU,
+    subject line keyword, and/or email copy keyword (all case-insensitive
+    substring matches; multiple filters are ANDed together).
     """
     actual_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
     params: dict = {}
 
-    # Date window clause (no aliases — used in the flat dod_metrics table)
+    # Date window clause — use explicit dod_metrics. prefix to avoid ambiguity
+    # when email_assets is conditionally joined for the email_copy filter.
     if date_from or date_to:
         parts = []
         if date_from:
-            parts.append("send_date >= %(date_from)s")
+            parts.append("dod_metrics.send_date >= %(date_from)s")
             params["date_from"] = date_from
         if date_to:
-            parts.append("send_date <= %(date_to)s")
+            parts.append("dod_metrics.send_date <= %(date_to)s")
             params["date_to"] = date_to
         date_clause = "AND " + " AND ".join(parts)
     else:
         date_clause = (
-            f"AND send_date >= "
+            f"AND dod_metrics.send_date >= "
             f"(SELECT MAX(send_date) FROM dod_metrics WHERE {actual_filter})"
             f" - INTERVAL '{days} days'"
         )
 
     bu_clause = ""
     if business_unit:
-        bu_clause = "AND business_unit = %(business_unit)s"
+        bu_clause = "AND dod_metrics.business_unit = %(business_unit)s"
         params["business_unit"] = business_unit
 
     sl_clause = ""
     if subject_line:
-        sl_clause = "AND subject_line ILIKE %(subject_line)s"
+        sl_clause = "AND dod_metrics.subject_line ILIKE %(subject_line)s"
         params["subject_line"] = f"%{subject_line}%"
+
+    ec_join = ""
+    ec_clause = ""
+    if email_copy:
+        ec_join = "LEFT JOIN email_assets ea ON ea.asset_id = dod_metrics.email_asset_id"
+        ec_clause = """AND (
+              ea.subject_line ILIKE %(email_copy)s
+              OR ea.pre_header ILIKE %(email_copy)s
+              OR ea.copy_found ILIKE %(email_copy)s
+          )"""
+        params["email_copy"] = f"%{email_copy}%"
 
     # Same clauses but with d. prefix for the sentiment join query
     if date_from or date_to:
@@ -163,10 +177,16 @@ async def metrics_summary(
         )
     d_bu_clause = "AND d.business_unit = %(business_unit)s" if business_unit else ""
     d_sl_clause = "AND d.subject_line ILIKE %(subject_line)s" if subject_line else ""
+    d_ec_join = "LEFT JOIN email_assets ea ON ea.asset_id = d.email_asset_id" if email_copy else ""
+    d_ec_clause = """AND (
+              ea.subject_line ILIKE %(email_copy)s
+              OR ea.pre_header ILIKE %(email_copy)s
+              OR ea.copy_found ILIKE %(email_copy)s
+          )""" if email_copy else ""
 
     sql = f"""
         SELECT
-            business_unit,
+            dod_metrics.business_unit,
             SUM(total_sends)        AS total_sends,
             SUM(deliveries)         AS deliveries,
             SUM(total_opens)        AS total_opens,
@@ -176,12 +196,14 @@ async def metrics_summary(
             AVG(delivery_rate)      AS avg_delivery_rate,
             AVG(click_to_open_rate) AS avg_ctor
         FROM dod_metrics
+        {ec_join}
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
           {sl_clause}
-        GROUP BY business_unit
-        ORDER BY business_unit
+          {ec_clause}
+        GROUP BY dod_metrics.business_unit
+        ORDER BY dod_metrics.business_unit
     """
     overall_sql = f"""
         SELECT
@@ -193,22 +215,26 @@ async def metrics_summary(
             AVG(click_rate)         AS avg_click_rate,
             AVG(delivery_rate)      AS avg_delivery_rate,
             AVG(click_to_open_rate) AS avg_ctor,
-            MAX(send_date)          AS latest_date,
-            MIN(send_date)          AS earliest_date
+            MAX(dod_metrics.send_date) AS latest_date,
+            MIN(dod_metrics.send_date) AS earliest_date
         FROM dod_metrics
+        {ec_join}
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
           {sl_clause}
+          {ec_clause}
     """
     sentiment_sql = f"""
         SELECT AVG(v.sentiment_value) AS avg_sentiment
         FROM voc_responses v
         JOIN dod_metrics d ON v.dod_metric_id = d.id
+        {d_ec_join}
         WHERE (d.is_planned IS FALSE OR d.is_planned IS NULL)
           {d_date_clause}
           {d_bu_clause}
           {d_sl_clause}
+          {d_ec_clause}
     """
 
     try:
@@ -234,11 +260,12 @@ async def metrics_trend(
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
     subject_line: Optional[str] = Query(default=None, description="LIKE filter on subject_line"),
+    email_copy: Optional[str] = Query(default=None, description="LIKE filter across email subject, pre-header, and body copy"),
 ):
     """
     Daily delivery/open/click/sentiment counts broken down by business_unit.
     When date_from/date_to are provided they override the relative `days` window.
-    Optionally filter by subject line keyword (case-insensitive substring match).
+    Optionally filter by subject line and/or email copy keyword (ANDed).
     """
     actual_filter = "(d.is_planned IS FALSE OR d.is_planned IS NULL)"
     anchor_filter = "(is_planned IS FALSE OR is_planned IS NULL)"
@@ -270,6 +297,17 @@ async def metrics_trend(
         sl_clause = "AND d.subject_line ILIKE %(subject_line)s"
         params["subject_line"] = f"%{subject_line}%"
 
+    ec_join = ""
+    ec_clause = ""
+    if email_copy:
+        ec_join = "LEFT JOIN email_assets ea ON ea.asset_id = d.email_asset_id"
+        ec_clause = """AND (
+              ea.subject_line ILIKE %(email_copy)s
+              OR ea.pre_header ILIKE %(email_copy)s
+              OR ea.copy_found ILIKE %(email_copy)s
+          )"""
+        params["email_copy"] = f"%{email_copy}%"
+
     sql = f"""
         SELECT
             d.send_date,
@@ -283,10 +321,12 @@ async def metrics_trend(
             AVG(v.sentiment_value)     AS avg_sentiment
         FROM dod_metrics d
         LEFT JOIN voc_responses v ON v.dod_metric_id = d.id
+        {ec_join}
         WHERE {actual_filter}
           {date_clause}
           {bu_clause}
           {sl_clause}
+          {ec_clause}
         GROUP BY d.send_date, d.business_unit
         ORDER BY d.send_date ASC, d.business_unit
     """
@@ -315,14 +355,15 @@ async def voc_responses_list(
     date_to: Optional[str]   = Query(default=None, description="YYYY-MM-DD"),
     business_unit: Optional[str] = Query(default=None),
     subject_line: Optional[str] = Query(default=None, description="LIKE filter on the associated email subject line"),
+    email_copy: Optional[str] = Query(default=None, description="LIKE filter across email subject, pre-header, and body copy"),
     limit: int = Query(default=500, ge=1, le=2000),
 ):
     """
     List VOC responses with subscriber email and audience type.
     Filtered by response_date. When date_from/date_to are provided they
     take precedence over the relative `days` rolling window.
-    When subject_line is provided, only responses linked to a dod_metrics
-    row whose subject_line matches are returned.
+    subject_line filters via dod_metrics; email_copy filters via email_assets
+    joined on voc_responses.email_asset_id. Both filters are ANDed.
     """
     params: dict = {}
 
@@ -350,6 +391,17 @@ async def voc_responses_list(
         sl_clause = "AND d.subject_line ILIKE %(subject_line)s"
         params["subject_line"] = f"%{subject_line}%"
 
+    ec_join = ""
+    ec_clause = ""
+    if email_copy:
+        ec_join = "LEFT JOIN email_assets ea ON ea.asset_id = v.email_asset_id"
+        ec_clause = """AND (
+              ea.subject_line ILIKE %(email_copy)s
+              OR ea.pre_header ILIKE %(email_copy)s
+              OR ea.copy_found ILIKE %(email_copy)s
+          )"""
+        params["email_copy"] = f"%{email_copy}%"
+
     params["limit"] = limit
 
     sql = f"""
@@ -363,10 +415,12 @@ async def voc_responses_list(
         FROM voc_responses v
         LEFT JOIN subscribers s ON s.subscriber_key = v.subscriber_key
         {sl_join}
+        {ec_join}
         WHERE 1=1
           {date_clause}
           {bu_clause}
           {sl_clause}
+          {ec_clause}
         ORDER BY v.response_date DESC
         LIMIT %(limit)s
     """
@@ -391,12 +445,14 @@ async def journeys_list(
     status: Optional[str] = Query(default=None),
     business_unit: Optional[str] = Query(default=None),
     subject_line: Optional[str] = Query(default=None, description="LIKE filter — only journeys with a matching activity email subject"),
+    email_copy: Optional[str] = Query(default=None, description="LIKE filter — only journeys where an activity's email asset matches subject, pre-header, or body copy"),
 ):
     """
     List journeys with their latest send date and entry source frequency.
-    Optionally filter by status (Active, Stopped, Draft, Paused, Complete),
-    business_unit, and/or subject line keyword (matched against
-    journey_activities.email_subject; journey shown if any activity matches).
+    Optionally filter by status, business_unit, subject line keyword
+    (journey_activities.email_subject), and/or email copy keyword
+    (email_assets subject/pre_header/copy_found via journey_activities.email_id).
+    All filters are ANDed.
     """
     params: dict = {}
     status_filter = ""
@@ -417,6 +473,21 @@ async def journeys_list(
               AND ja.email_subject ILIKE %(subject_line)s
         )"""
         params["subject_line"] = f"%{subject_line}%"
+
+    ec_filter = ""
+    if email_copy:
+        ec_filter = """
+        AND EXISTS (
+            SELECT 1 FROM journey_activities ja
+            JOIN email_assets ea ON ea.asset_id = ja.email_id
+            WHERE ja.journey_id = j.journey_id
+              AND (
+                ea.subject_line ILIKE %(email_copy)s
+                OR ea.pre_header ILIKE %(email_copy)s
+                OR ea.copy_found ILIKE %(email_copy)s
+              )
+        )"""
+        params["email_copy"] = f"%{email_copy}%"
 
     sql = f"""
         SELECT
@@ -440,6 +511,7 @@ async def journeys_list(
         {status_filter}
         {bu_filter}
         {sl_filter}
+        {ec_filter}
         GROUP BY
             j.journey_id, j.journey_name, j.business_unit, j.status,
             j.target_audience, j.department, j.created_date, j.last_modified_date,
@@ -533,11 +605,12 @@ async def upcoming_sends_calendar(
     month: int = Query(default=None, ge=1, le=12),
     business_unit: Optional[str] = Query(default=None),
     subject_line: Optional[str] = Query(default=None, description="LIKE filter — only journeys with a matching activity email subject"),
+    email_copy: Optional[str] = Query(default=None, description="LIKE filter — only journeys where an activity's email asset matches subject, pre-header, or body copy"),
 ):
     """
     Upcoming journey calendar for the given month/year, optionally filtered
-    by business_unit and/or subject line keyword. Days with no matching
-    journeys are omitted when a subject line filter is active.
+    by business_unit, subject line keyword, and/or email copy keyword.
+    Days with no matching journeys are omitted when filters are active.
     Defaults to the current calendar month.
     """
     from datetime import date as _date
@@ -561,6 +634,21 @@ async def upcoming_sends_calendar(
           )"""
         params["subject_line"] = f"%{subject_line}%"
 
+    ec_filter = ""
+    if email_copy:
+        ec_filter = """
+          AND EXISTS (
+              SELECT 1 FROM journey_activities ja
+              JOIN email_assets ea ON ea.asset_id = ja.email_id
+              WHERE ja.journey_id = j.journey_id
+                AND (
+                  ea.subject_line ILIKE %(email_copy)s
+                  OR ea.pre_header ILIKE %(email_copy)s
+                  OR ea.copy_found ILIKE %(email_copy)s
+                )
+          )"""
+        params["email_copy"] = f"%{email_copy}%"
+
     sql = f"""
         SELECT
             DATE(jes.schedule_start_time)                               AS send_date,
@@ -579,6 +667,7 @@ async def upcoming_sends_calendar(
           AND EXTRACT(MONTH FROM jes.schedule_start_time) = %(month)s
           {bu_filter}
           {sl_filter}
+          {ec_filter}
         GROUP BY DATE(jes.schedule_start_time)
         ORDER BY DATE(jes.schedule_start_time)
     """

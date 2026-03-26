@@ -7,9 +7,10 @@ export type GlobalFilters = {
   dateTo: string;
   audience: string;
   subjectLine: string;
+  emailCopy: string;
 };
 
-const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "", subjectLine: "" };
+const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "", subjectLine: "", emailCopy: "" };
 
 const BU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: "",     label: "All Audiences", short: "All" },
@@ -48,7 +49,7 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [open]);
 
-  const isActive = !!(filters.dateFrom || filters.dateTo || filters.audience || filters.subjectLine);
+  const isActive = !!(filters.dateFrom || filters.dateTo || filters.audience || filters.subjectLine || filters.emailCopy);
 
   const pillLabel = (() => {
     if (!isActive) return "All Time · All Audiences";
@@ -64,6 +65,9 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
     }
     if (filters.subjectLine) {
       parts.push(`"${filters.subjectLine}"`);
+    }
+    if (filters.emailCopy) {
+      parts.push(`copy:"${filters.emailCopy}"`);
     }
     return parts.join(" · ");
   })();
@@ -157,6 +161,21 @@ export function FilterBar({ filters, onApply }: FilterBarProps) {
               placeholder="e.g. graduation"
               value={draft.subjectLine}
               onChange={(e) => setDraft((d) => ({ ...d, subjectLine: e.target.value }))}
+            />
+          </div>
+
+          {/* Email Copy */}
+          <div className="filter-section">
+            <label className="filter-section-label" htmlFor="fb-email-copy">
+              Email Copy Contains
+            </label>
+            <input
+              id="fb-email-copy"
+              type="text"
+              className="filter-date-input"
+              placeholder="e.g. FAFSA deadline"
+              value={draft.emailCopy}
+              onChange={(e) => setDraft((d) => ({ ...d, emailCopy: e.target.value }))}
             />
           </div>
 
