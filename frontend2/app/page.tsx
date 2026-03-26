@@ -46,7 +46,7 @@ function fmtSentiment(v: number | null | undefined) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
 }
 
-const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "", subjectLine: "" };
+const EMPTY_FILTERS: GlobalFilters = { dateFrom: "", dateTo: "", audience: "", subjectLine: "", emailCopy: "" };
 
 export default function DashboardPage() {
   // Global filter state
@@ -86,6 +86,7 @@ export default function DashboardPage() {
       dateTo: filters.dateTo || undefined,
       businessUnit: filters.audience || undefined,
       subjectLine: filters.subjectLine || undefined,
+      emailCopy: filters.emailCopy || undefined,
     })
       .then((d) => { setOverall(d.overall); setLoadingMetrics(false); })
       .catch(() => { setLoadingMetrics(false); setMetricsError(true); });
@@ -99,6 +100,7 @@ export default function DashboardPage() {
       dateTo: filters.dateTo || undefined,
       businessUnit: filters.audience || undefined,
       subjectLine: filters.subjectLine || undefined,
+      emailCopy: filters.emailCopy || undefined,
     })
       .then((d) => { setTrend(d.trend); setLoadingTrend(false); })
       .catch(() => setLoadingTrend(false));
@@ -112,6 +114,7 @@ export default function DashboardPage() {
       dateTo: filters.dateTo || undefined,
       businessUnit: filters.audience || undefined,
       subjectLine: filters.subjectLine || undefined,
+      emailCopy: filters.emailCopy || undefined,
     })
       .then((d) => { setVocResponses(d.responses); setLoadingVoc(false); })
       .catch(() => setLoadingVoc(false));
@@ -119,7 +122,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setLoadingJourneys(true);
-    fetchJourneys(undefined, filters.audience || undefined, filters.subjectLine || undefined)
+    fetchJourneys(undefined, filters.audience || undefined, filters.subjectLine || undefined, filters.emailCopy || undefined)
       .then((d) => { setJourneys(d.journeys); setLoadingJourneys(false); })
       .catch(() => setLoadingJourneys(false));
   }, [filters]);
@@ -142,6 +145,7 @@ export default function DashboardPage() {
       calMonth ?? undefined,
       filters.audience || undefined,
       filters.subjectLine || undefined,
+      filters.emailCopy || undefined,
     )
       .then((d) => {
         setCalDays(d.days);
@@ -150,7 +154,7 @@ export default function DashboardPage() {
         setLoadingCal(false);
       })
       .catch(() => setLoadingCal(false));
-  }, [calYear, calMonth, filters.audience, filters.subjectLine]);
+  }, [calYear, calMonth, filters.audience, filters.subjectLine, filters.emailCopy]);
 
   const handleMonthChange = useCallback((y: number, m: number) => {
     setCalYear(y);
@@ -326,7 +330,7 @@ export default function DashboardPage() {
               <h3 className="section-title">Email Asset Search</h3>
               <p className="section-subtitle">
                 Search by email copy, subject line, business unit, sender, or send date range.
-                {(filters.dateFrom || filters.dateTo || filters.audience || filters.subjectLine) && (
+                {(filters.dateFrom || filters.dateTo || filters.audience || filters.subjectLine || filters.emailCopy) && (
                   <span className="search-filter-hint"> Global filters pre-applied below.</span>
                 )}
               </p>
