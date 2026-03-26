@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { EmailSearchResult } from "../../lib/api";
 
 type EmailSearchPanelProps = {
@@ -14,6 +14,10 @@ type EmailSearchPanelProps = {
   results: EmailSearchResult[];
   loading?: boolean;
   searched?: boolean;
+  /** Pre-populate from global dashboard filters */
+  externalDateFrom?: string;
+  externalDateTo?: string;
+  externalBu?: string;
 };
 
 const BU_OPTIONS = ["", "UC", "GC", "OL", "MIL", "INTL"];
@@ -35,12 +39,25 @@ function fmtRate(r: number | null) {
   return `${(Number(r) * 100).toFixed(1)}%`;
 }
 
-export function EmailSearchPanel({ onSearch, results, loading, searched }: EmailSearchPanelProps) {
+export function EmailSearchPanel({
+  onSearch,
+  results,
+  loading,
+  searched,
+  externalDateFrom = "",
+  externalDateTo = "",
+  externalBu = "",
+}: EmailSearchPanelProps) {
   const [copy, setCopy] = useState("");
-  const [bu, setBu] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [bu, setBu] = useState(externalBu);
+  const [dateFrom, setDateFrom] = useState(externalDateFrom);
+  const [dateTo, setDateTo] = useState(externalDateTo);
   const [sender, setSender] = useState("");
+
+  // Sync when global filters change
+  useEffect(() => { setBu(externalBu); }, [externalBu]);
+  useEffect(() => { setDateFrom(externalDateFrom); }, [externalDateFrom]);
+  useEffect(() => { setDateTo(externalDateTo); }, [externalDateTo]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -48,7 +65,11 @@ export function EmailSearchPanel({ onSearch, results, loading, searched }: Email
   }
 
   function handleReset() {
-    setCopy(""); setBu(""); setDateFrom(""); setDateTo(""); setSender("");
+    setCopy("");
+    setBu(externalBu);
+    setDateFrom(externalDateFrom);
+    setDateTo(externalDateTo);
+    setSender("");
   }
 
   return (

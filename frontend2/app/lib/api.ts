@@ -149,17 +149,42 @@ async function apiFetch<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function fetchMetricsSummary(days = 365): Promise<MetricsSummaryResponse> {
-  return apiFetch(`${API_BASE}/api/metrics/summary?days=${days}`);
+export async function fetchMetricsSummary(params?: {
+  days?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  businessUnit?: string;
+}): Promise<MetricsSummaryResponse> {
+  const qs = new URLSearchParams();
+  if (params?.days) qs.set("days", String(params.days));
+  if (params?.dateFrom) qs.set("date_from", params.dateFrom);
+  if (params?.dateTo) qs.set("date_to", params.dateTo);
+  if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/metrics/summary${query}`);
 }
 
-export async function fetchMetricsTrend(days = 30): Promise<TrendResponse> {
-  return apiFetch(`${API_BASE}/api/metrics/trend?days=${days}`);
+export async function fetchMetricsTrend(params?: {
+  days?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  businessUnit?: string;
+}): Promise<TrendResponse> {
+  const qs = new URLSearchParams();
+  if (params?.days) qs.set("days", String(params?.days ?? 90));
+  if (params?.dateFrom) qs.set("date_from", params.dateFrom);
+  if (params?.dateTo) qs.set("date_to", params.dateTo);
+  if (params?.businessUnit) qs.set("business_unit", params.businessUnit);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/metrics/trend${query}`);
 }
 
-export async function fetchJourneys(status?: string): Promise<JourneysResponse> {
-  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-  return apiFetch(`${API_BASE}/api/journeys${qs}`);
+export async function fetchJourneys(status?: string, businessUnit?: string): Promise<JourneysResponse> {
+  const qs = new URLSearchParams();
+  if (status) qs.set("status", status);
+  if (businessUnit) qs.set("business_unit", businessUnit);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`${API_BASE}/api/journeys${query}`);
 }
 
 export async function fetchCalendar(year?: number, month?: number): Promise<CalendarResponse> {
@@ -170,10 +195,11 @@ export async function fetchCalendar(year?: number, month?: number): Promise<Cale
   return apiFetch(`${API_BASE}/api/sends/calendar${query}`);
 }
 
-export async function fetchUpcomingCalendar(year?: number, month?: number): Promise<CalendarResponse> {
+export async function fetchUpcomingCalendar(year?: number, month?: number, businessUnit?: string): Promise<CalendarResponse> {
   const qs = new URLSearchParams();
   if (year != null) qs.set("year", String(year));
   if (month != null) qs.set("month", String(month));
+  if (businessUnit) qs.set("business_unit", businessUnit);
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`${API_BASE}/api/sends/upcoming-calendar${query}`);
 }

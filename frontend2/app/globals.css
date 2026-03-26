@@ -520,6 +520,12 @@ h6 {
   justify-content: space-between;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .topbar-period {
   font-size: 12px;
   color: var(--text-secondary);
@@ -527,6 +533,209 @@ h6 {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px 10px;
+}
+
+/* ==========================================================================
+   FILTER BAR
+   ========================================================================== */
+
+.filter-bar-wrap {
+  position: relative;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 4px 12px 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms, background 150ms;
+  white-space: nowrap;
+}
+
+.filter-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.filter-pill-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.filter-pill-label {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-pill-caret {
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.13);
+  min-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filter-popover-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-date-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.filter-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.filter-date-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.filter-date-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chat-bg);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.filter-date-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filter-date-arrow {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.filter-audience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.filter-audience-btn {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 150ms;
+}
+
+.filter-audience-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-audience-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.filter-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.filter-clear-btn {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.filter-clear-btn:hover {
+  background: #f2f2ef;
+}
+
+.filter-apply-btn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+
+.filter-apply-btn:hover {
+  opacity: 0.88;
+}
+
+.search-filter-hint {
+  color: var(--accent);
+  font-weight: 500;
 }
 
 .dashboard-scroll {
