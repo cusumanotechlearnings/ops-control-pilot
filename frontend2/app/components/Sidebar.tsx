@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { Conversation } from "../types";
 import { truncateTitle, formatRelativeTime } from "../lib/utils";
 
@@ -8,6 +9,7 @@ type SidebarProps = {
   activeConversationId: string;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
+  extraTopLink?: ReactNode;
 };
 
 export function Sidebar({
@@ -15,6 +17,7 @@ export function Sidebar({
   activeConversationId,
   onSelectConversation,
   onNewConversation,
+  extraTopLink,
 }: SidebarProps) {
   return (
     <aside className="sidebar-root">
@@ -22,6 +25,8 @@ export function Sidebar({
         <h1 className="sidebar-app-name">Marketing Ops AI</h1>
         <p className="sidebar-powered-by">Powered by Claude</p>
       </div>
+
+      {extraTopLink}
 
       <button type="button" className="sidebar-new-conversation" onClick={onNewConversation}>
         + New conversation
